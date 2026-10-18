@@ -52,7 +52,7 @@ public:
                         area.withTrimmedBottom (area.getHeight() * 0.35f), juce::Justification::centred);
             g.setColour (err.isNotEmpty() ? colours::tape : colours::textDim);
             g.setFont (juce::FontOptions (11.0f));
-            g.drawText (err.isNotEmpty() ? err : "WAV  AIFF  FLAC  MP3  OGG  -  then play notes on a MIDI track",
+            g.drawText (err.isNotEmpty() ? err : "WAV  AIFF  MP3  FLAC  OGG  M4A  -  then play notes",
                         area.withTrimmedTop (area.getHeight() * 0.55f), juce::Justification::centred);
             return;
         }

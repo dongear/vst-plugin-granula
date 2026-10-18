@@ -265,13 +265,27 @@ void GranulaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
 
 bool GranulaProcessor::isSupportedFile (const juce::File& f) const
 {
-    return f.existsAsFile() && supportedFileWildcard().containsIgnoreCase (f.getFileExtension());
+    // Anything that is a real file and not a preset is worth a try: the decoder
+    // reports a clear error if the format really isn't readable.
+    if (! f.existsAsFile()) return false;
+    const auto ext = f.getFileExtension().toLowerCase();
+    if (ext == presetExtension) return false;
+    return ext.isEmpty() || supportedFileWildcard().containsIgnoreCase (ext)
+           || formats.findFormatForFileExtension (ext) != nullptr
+           || ! juce::String (".txt.pdf.png.jpg.jpeg.gif.zip.als.adg.adv.alp.mid.midi.json.xml").contains (ext);
 }
 
 bool GranulaProcessor::decodeFile (const juce::File& file, SampleData& out, juce::String& error)
 {
     std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
-    if (reader == nullptr) { error = "Can't read this file format"; return false; }
+    if (reader == nullptr)
+    {
+        // Some files have a misleading extension: try every decoder on the raw stream.
+        for (auto* fmt : formats)
+            if (auto in = file.createInputStream())
+                if (auto* r = fmt->createReaderFor (in.release(), true)) { reader.reset (r); break; }
+    }
+    if (reader == nullptr) { error = "Unsupported audio format"; return false; }
 
     constexpr double maxSeconds = 300.0; // 5 minutes keeps memory reasonable
     const auto total = (juce::int64) std::min ((double) reader->lengthInSamples, maxSeconds * reader->sampleRate);

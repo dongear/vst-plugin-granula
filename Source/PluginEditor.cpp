@@ -322,6 +322,25 @@ void MainView::filesDropped (const juce::StringArray& files, int, int)
     }
 }
 
+static juce::StringArray pathsFromText (const juce::String& text)
+{
+    juce::StringArray out;
+    for (auto line : juce::StringArray::fromLines (text))
+    {
+        line = line.trim().unquoted();
+        if (line.startsWithIgnoreCase ("file://"))
+            line = juce::URL (line).getLocalFile().getFullPathName();
+        if (line.isNotEmpty() && juce::File::isAbsolutePath (line) && juce::File (line).existsAsFile())
+            out.add (line);
+    }
+    return out;
+}
+
+bool MainView::isInterestedInTextDrag (const juce::String& text) { return isInterestedInFileDrag (pathsFromText (text)); }
+void MainView::textDragEnter (const juce::String& text, int x, int y) { fileDragEnter (pathsFromText (text), x, y); }
+void MainView::textDragExit (const juce::String& text) { fileDragExit (pathsFromText (text)); }
+void MainView::textDropped (const juce::String& text, int x, int y) { filesDropped (pathsFromText (text), x, y); }
+
 void MainView::timerCallback()
 {
     if (proc.getCurrentProgram() != shownProgram || proc.getPresetChangeCount() != shownChange) refreshPresetBox();

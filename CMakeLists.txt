@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Artempidor VERSION 0.3.0 LANGUAGES C CXX)
+project(Artempidor VERSION 0.3.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,6 +58,7 @@ function(granula_add_plugin target)
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_USE_MP3AUDIOFORMAT=1
+        JUCE_USE_WINDOWS_MEDIA_FORMAT=1
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0)
 

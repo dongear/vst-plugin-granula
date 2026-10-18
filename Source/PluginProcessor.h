@@ -56,7 +56,10 @@ public:
     juce::String getSampleError() const;
     bool isLoadingSample() const { return loading.load(); }
     int getSampleVersion() const { return sampleVersion.load(); }
-    static juce::String supportedFileWildcard() { return "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.ogg;*.m4a"; }
+    static juce::String supportedFileWildcard()
+    {
+        return "*.wav;*.wave;*.aif;*.aiff;*.aifc;*.flac;*.mp3;*.ogg;*.oga;*.m4a;*.aac;*.mp4;*.caf;*.wma;*.bwf";
+    }
     bool isSupportedFile (const juce::File& f) const;
 
     // ---- user presets (files in ~/Documents/artempidor/Presets/)

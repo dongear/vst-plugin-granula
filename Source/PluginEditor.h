@@ -9,6 +9,7 @@
 // as a whole when the plugin window is resized.
 class MainView : public juce::Component,
                  public juce::FileDragAndDropTarget,
+                 public juce::TextDragAndDropTarget,
                  private juce::Timer
 {
 public:
@@ -25,6 +26,12 @@ public:
     void fileDragEnter (const juce::StringArray&, int, int) override;
     void fileDragExit (const juce::StringArray&) override;
     void filesDropped (const juce::StringArray& files, int, int) override;
+
+    // Some hosts hand over dragged files as text (a path or file:// URL).
+    bool isInterestedInTextDrag (const juce::String& text) override;
+    void textDragEnter (const juce::String& text, int x, int y) override;
+    void textDragExit (const juce::String& text) override;
+    void textDropped (const juce::String& text, int x, int y) override;
 
 private:
     void timerCallback() override;

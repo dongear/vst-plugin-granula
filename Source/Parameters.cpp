@@ -57,20 +57,21 @@ Attr dbAttr()
 }
 } // namespace
 
-juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout (bool isInstrument)
+juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
     // ---- Grain ----
+    layout.add (std::make_unique<APC> (pid (ids::mode), "Mode", modeNames(), 0));
+
     auto grain = std::make_unique<juce::AudioProcessorParameterGroup> ("grain", "Grain", "|");
     grain->addChild (std::make_unique<APF> (pid (ids::size), "Grain Size", skewed (5.0f, 1000.0f, 120.0f), 120.0f, msAttr()));
     grain->addChild (std::make_unique<APF> (pid (ids::density), "Density", skewed (0.5f, 100.0f, 12.0f), 12.0f, hzAttr()));
     grain->addChild (std::make_unique<APB> (pid (ids::sync), "Density Sync", false));
     grain->addChild (std::make_unique<APC> (pid (ids::division), "Density Division", divisionNames(), 4));
-    if (isInstrument)
     {
-        grain->addChild (std::make_unique<APF> (pid (ids::samplePos), "Position", juce::NormalisableRange<float> (0.0f, 1.0f), 0.25f, pctAttr()));
-        grain->addChild (std::make_unique<APF> (pid (ids::sampleSpray), "Spray", skewed (0.0f, 1.0f, 0.1f), 0.03f, pctAttr()));
+        grain->addChild (std::make_unique<APF> (pid (ids::samplePos), "Sample Position", juce::NormalisableRange<float> (0.0f, 1.0f), 0.25f, pctAttr()));
+        grain->addChild (std::make_unique<APF> (pid (ids::sampleSpray), "Sample Spray", skewed (0.0f, 1.0f, 0.1f), 0.03f, pctAttr()));
         grain->addChild (std::make_unique<APF> (pid (ids::scan), "Scan", juce::NormalisableRange<float> (-2.0f, 2.0f, 0.001f), 0.0f,
                                                 Attr().withStringFromValueFunction ([] (float v, int)
                                                 {
@@ -79,10 +80,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout (bool 
         grain->addChild (std::make_unique<APF> (pid (ids::attack), "Attack", skewed (1.0f, 5000.0f, 200.0f), 15.0f, msAttr()));
         grain->addChild (std::make_unique<APF> (pid (ids::release), "Release", skewed (5.0f, 10000.0f, 800.0f), 600.0f, msAttr()));
     }
-    else
     {
-        grain->addChild (std::make_unique<APF> (pid (ids::position), "Position", skewed (0.0f, 2000.0f, 300.0f), 80.0f, msAttr()));
-        grain->addChild (std::make_unique<APF> (pid (ids::spray), "Spray", skewed (0.0f, 1000.0f, 150.0f), 40.0f, msAttr()));
+        grain->addChild (std::make_unique<APF> (pid (ids::position), "Input Position", skewed (0.0f, 2000.0f, 300.0f), 80.0f, msAttr()));
+        grain->addChild (std::make_unique<APF> (pid (ids::spray), "Input Spray", skewed (0.0f, 1000.0f, 150.0f), 40.0f, msAttr()));
     }
     grain->addChild (std::make_unique<APF> (pid (ids::pitch), "Pitch", juce::NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, stAttr()));
     grain->addChild (std::make_unique<APF> (pid (ids::pitchRand), "Pitch Random", juce::NormalisableRange<float> (0.0f, 24.0f, 0.01f), 0.0f, stAttr()));
@@ -92,7 +92,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout (bool 
     grain->addChild (std::make_unique<APF> (pid (ids::reverse), "Reverse", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pctAttr()));
     grain->addChild (std::make_unique<APF> (pid (ids::spread), "Spread", juce::NormalisableRange<float> (0.0f, 1.0f), 0.6f, pctAttr()));
     grain->addChild (std::make_unique<APF> (pid (ids::shape), "Shape", juce::NormalisableRange<float> (0.0f, 1.0f), 0.3f, pctAttr()));
-    if (! isInstrument)
     {
         grain->addChild (std::make_unique<APF> (pid (ids::feedback), "Grain Feedback", juce::NormalisableRange<float> (0.0f, 0.95f), 0.0f, pctAttr()));
         grain->addChild (std::make_unique<APB> (pid (ids::freeze), "Freeze", false));

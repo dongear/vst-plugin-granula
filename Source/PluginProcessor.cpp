@@ -5,19 +5,16 @@
 using namespace granula;
 
 GranulaProcessor::GranulaProcessor()
-    : AudioProcessor ([]
-      {
-          if constexpr (isInstrument)
-              return BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true);
-          else
-              return BusesProperties()
-                  .withInput ("Input", juce::AudioChannelSet::stereo(), true)
-                  .withOutput ("Output", juce::AudioChannelSet::stereo(), true);
-      }()),
-      apvts (*this, nullptr, "GranulaState", createParameterLayout (isInstrument))
+    // Instrument with an audio input: hosts show bus 1 as "Sidechain", which is
+    // how INPUT mode receives audio from another track (e.g. Ableton: Sidechain -> Audio From).
+    : AudioProcessor (BusesProperties()
+                          .withInput ("Input", juce::AudioChannelSet::stereo(), false)
+                          .withInput ("Sidechain", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "GranulaState", createParameterLayout())
 {
     const char* all[] = {
-        ids::size, ids::density, ids::sync, ids::division, ids::position, ids::spray, ids::pitch, ids::pitchRand,
+        ids::mode, ids::size, ids::density, ids::sync, ids::division, ids::position, ids::spray, ids::pitch, ids::pitchRand,
         ids::scale, ids::detune, ids::reverse, ids::spread, ids::shape, ids::feedback, ids::freeze, ids::grainMix,
         ids::samplePos, ids::sampleSpray, ids::scan, ids::attack, ids::release,
         ids::tapeOn, ids::tapeDrive, ids::tapeWow, ids::tapeFlutter, ids::tapeAge, ids::tapeHiss,
@@ -40,13 +37,15 @@ GranulaProcessor::~GranulaProcessor()
 bool GranulaProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo()) return false;
-    if constexpr (isInstrument) return true;
-    const auto in = layouts.getMainInputChannelSet();
-    return in == juce::AudioChannelSet::stereo() || in == juce::AudioChannelSet::mono();
+    for (const auto& in : layouts.inputBuses)
+        if (! (in.isDisabled() || in == juce::AudioChannelSet::stereo() || in == juce::AudioChannelSet::mono()))
+            return false;
+    return true;
 }
 
-void GranulaProcessor::prepareToPlay (double sampleRate, int)
+void GranulaProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    inputCopy.setSize (2, std::max (samplesPerBlock, 512), false, true, false);
     granular.prepare (sampleRate);
     sampler.prepare (sampleRate);
     tape.prepare (sampleRate);
@@ -54,7 +53,7 @@ void GranulaProcessor::prepareToPlay (double sampleRate, int)
     reverb.prepare (sampleRate);
     outSm.prepare (sampleRate, 20.0f);
     outSm.snap (dbToGain (get (ids::outGain)));
-    setLatencySamples (isInstrument ? 0 : tape.getLatencySamples());
+    setLatencySamples (tape.getLatencySamples());
 }
 
 void GranulaProcessor::reset()
@@ -112,10 +111,44 @@ void GranulaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
     const float interval = synced ? (float) (beatSamples * divisionBeats (getInt (ids::division)))
                                   : (float) (sr / std::max (0.1f, get (ids::density)));
 
-    if constexpr (isInstrument)
+    // Grab the incoming audio (sidechain preferred, else main input) before
+    // the output buffer — which shares channels with the inputs — is cleared.
+    const bool inputMode = getInt (ids::mode) == 1;
+    if (inputMode)
     {
-        buffer.clear();
+        if (inputCopy.getNumSamples() < n) inputCopy.setSize (2, n, false, false, true);
+        inputCopy.clear();
+        const int numBuses = getBusCount (true);
+        int busIndex = -1;
+        for (int b = numBuses - 1; b >= 0; --b)
+            if (auto* bus = getBus (true, b); bus != nullptr && bus->isEnabled() && bus->getNumberOfChannels() > 0) { busIndex = b; break; }
+        if (busIndex >= 0)
+        {
+            auto in = getBusBuffer (buffer, true, busIndex);
+            inputCopy.copyFrom (0, 0, in, 0, 0, n);
+            inputCopy.copyFrom (1, 0, in, in.getNumChannels() > 1 ? 1 : 0, 0, n);
+        }
+    }
 
+    buffer.clear();
+
+    // Notes from the on-screen preview
+    {
+        const auto scope = previewFifo.read (previewFifo.getNumReady());
+        auto apply = [this] (int start, int count)
+        {
+            for (int i = 0; i < count; ++i)
+            {
+                const int e = previewEvents[(size_t) (start + i)];
+                if (e >> 8) sampler.noteOn (e & 0x7f, 0.8f); else sampler.noteOff (e & 0x7f);
+            }
+        };
+        apply (scope.startIndex1, scope.blockSize1);
+        apply (scope.startIndex2, scope.blockSize2);
+    }
+
+    if (! inputMode)
+    {
         GranularSampler::Params sp;
         sp.sizeMs = get (ids::size);
         sp.intervalSamples = interval;
@@ -132,21 +165,6 @@ void GranulaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         sp.shape = get (ids::shape);
         sp.attackMs = get (ids::attack);
         sp.releaseMs = get (ids::release);
-
-        // Notes from the on-screen preview
-        {
-            const auto scope = previewFifo.read (previewFifo.getNumReady());
-            auto apply = [this] (int start, int count)
-            {
-                for (int i = 0; i < count; ++i)
-                {
-                    const int e = previewEvents[(size_t) (start + i)];
-                    if (e >> 8) sampler.noteOn (e & 0x7f, 0.8f); else sampler.noteOff (e & 0x7f);
-                }
-            };
-            apply (scope.startIndex1, scope.blockSize1);
-            apply (scope.startIndex2, scope.blockSize2);
-        }
 
         const juce::SpinLock::ScopedTryLockType lock (sampleLock);
         if (lock.isLocked())
@@ -165,13 +183,12 @@ void GranulaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         {
             for (const auto meta : midi) handleMidi (meta.getMessage()); // sample is being swapped: stay silent
         }
-        midi.clear();
     }
     else
     {
-        const int numIn = getTotalNumInputChannels();
-        if (numIn == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
-        else if (numIn == 0) buffer.clear();
+        for (const auto meta : midi) handleMidi (meta.getMessage()); // keep note state consistent
+        buffer.copyFrom (0, 0, inputCopy, 0, 0, n);
+        buffer.copyFrom (1, 0, inputCopy, 1, 0, n);
 
         GranularEngine::Params gp;
         gp.sizeMs = get (ids::size);
@@ -191,6 +208,7 @@ void GranulaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mid
         gp.mix = get (ids::grainMix);
         granular.process (L, R, n, gp);
     }
+    midi.clear();
 
     // ---- Tape ----
     TapeSaturation::Params tp;
@@ -277,7 +295,6 @@ bool GranulaProcessor::decodeFile (const juce::File& file, SampleData& out, juce
 
 void GranulaProcessor::loadSampleAsync (const juce::File& file)
 {
-    if (! isInstrument) return;
     loading = true;
     loaderPool.addJob ([this, file]
     {
@@ -325,17 +342,17 @@ void GranulaProcessor::previewNote (int note, bool on)
 
 // ---------------------------------------------------------------- presets
 
-int GranulaProcessor::getNumPrograms() { return (int) factoryPresets (isInstrument).size(); }
+int GranulaProcessor::getNumPrograms() { return (int) factoryPresets().size(); }
 
 const juce::String GranulaProcessor::getProgramName (int index)
 {
-    const auto& p = factoryPresets (isInstrument);
+    const auto& p = factoryPresets();
     return juce::isPositiveAndBelow (index, (int) p.size()) ? juce::String (p[(size_t) index].name) : juce::String();
 }
 
 void GranulaProcessor::setCurrentProgram (int index)
 {
-    const auto& presets = factoryPresets (isInstrument);
+    const auto& presets = factoryPresets();
     if (! juce::isPositiveAndBelow (index, (int) presets.size())) return;
     currentProgram = index;
     currentUserPreset.clear();
@@ -357,8 +374,8 @@ void GranulaProcessor::setCurrentProgram (int index)
 juce::File GranulaProcessor::getUserPresetFolder() const
 {
     return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-               .getChildFile ("Granula Presets")
-               .getChildFile (isInstrument ? "Granula" : "Granula FX");
+               .getChildFile ("artempidor")
+               .getChildFile ("Presets");
 }
 
 juce::Array<juce::File> GranulaProcessor::getUserPresets() const
@@ -388,7 +405,7 @@ bool GranulaProcessor::saveUserPreset (const juce::String& rawName)
         }
     {
         const juce::ScopedLock sl (errorLock);
-        if (isInstrument && loadedPath.isNotEmpty()) xml.setAttribute ("samplePath", loadedPath);
+        if (loadedPath.isNotEmpty()) xml.setAttribute ("samplePath", loadedPath);
     }
 
     auto folder = getUserPresetFolder();
@@ -414,7 +431,6 @@ bool GranulaProcessor::loadUserPreset (const juce::File& file)
         if (auto* rp = apvts.getParameter (e->getStringAttribute ("id")))
             rp->setValueNotifyingHost (rp->convertTo0to1 ((float) e->getDoubleAttribute ("value")));
 
-    if (isInstrument)
     {
         const juce::File sampleFile (xml->getStringAttribute ("samplePath"));
         if (xml->hasAttribute ("samplePath") && sampleFile.existsAsFile()) loadSampleAsync (sampleFile);
@@ -461,7 +477,7 @@ void GranulaProcessor::setStateInformation (const void* data, int sizeInBytes)
             const juce::String path = state.getProperty ("samplePath", {}).toString();
             apvts.replaceState (state);
 
-            if (isInstrument && path.isNotEmpty())
+            if (path.isNotEmpty())
             {
                 const juce::File f (path);
                 if (f.existsAsFile()) loadSampleAsync (f);

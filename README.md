@@ -1,10 +1,10 @@
-# Granula
+# artempidor
 
 Гранулятор для DAW: режет звук на «зёрна» и собирает из них облака, текстуры, глитчи и дроны. Внутри — кассетная сатурация, дилей и реверб.
 
-В комплекте два плагина:
-- **Granula** — инструмент. Закиньте в окно сэмпл (wav, aiff, flac, mp3, ogg) и играйте по нему с MIDI: полифония 8 голосов, C3 = исходная высота, сустейн-педаль, velocity.
-- **Granula FX** — эффект. Гранулирует живой звук на дорожке.
+Один плагин-инструмент с двумя режимами, переключаются прямо в окне:
+- **SAMPLE** — закиньте в окно сэмпл (wav, aiff, flac, mp3, ogg) и играйте по нему с MIDI: 8 голосов, C3 = исходная высота, сустейн, velocity.
+- **INPUT** — гранулирует живой звук с другой дорожки, поданный во вход Sidechain (Ableton: Sidechain → Audio From).
 
 **Форматы:** VST3 (Windows / macOS / Linux), AU (macOS), Standalone.
 
@@ -14,7 +14,7 @@
 
 ## Возможности
 
-**Granula (инструмент)**
+**Режим SAMPLE**
 - Перетаскивание сэмпла прямо в окно, волна с позициями зёрен и плейхедами голосов
 - Position (клик/драг по волне), Spray, **Scan** (движение по сэмплу, от −2x до 2x — таймстретч), Attack, Release
 - Кнопка «Hold to play» — прослушать без MIDI
@@ -32,9 +32,9 @@
 **Reverb** — 8-линейный FDN: Size, Decay до 20 с, Damping, Pre-Delay, Width, Mix
 
 **Пресеты**
-- По 8 заводских пресетов в каждом плагине
-- Свои пресеты: кнопка **SAVE**, файлы `.granula` в `Документы/Granula Presets/`
-- Делиться пресетами: перетащите `.granula` на окно плагина — он скопируется в ваш список
+- 16 заводских пресетов (8 для SAMPLE, 8 для INPUT)
+- Свои пресеты: кнопка **SAVE**, файлы `.artempidor` в `Документы/artempidor/Presets/`
+- Делиться пресетами: перетащите `.artempidor` на окно плагина — он скопируется в ваш список
 
 ## Сборка из исходников
 
@@ -45,7 +45,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-Результат — в `build/Granula_artefacts/Release/`.
+Результат — в `build/Artempidor_artefacts/Release/`.
 
 На Linux дополнительно нужны пакеты: `libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev`.
 

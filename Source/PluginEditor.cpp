@@ -5,7 +5,6 @@ namespace col = granula::ui::colours;
 
 MainView::MainView (GranulaProcessor& p)
     : proc (p),
-      instrument (GranulaProcessor::isInstrument),
       xyPad (p.apvts, ids::size, ids::density, ids::sync)
 {
     setLookAndFeel (&lnf);
@@ -34,62 +33,75 @@ MainView::MainView (GranulaProcessor& p)
     }
     knob (outKnob, ids::outGain, "Output", col::text, true);
 
-    // Grain
+    // Grain: source switch
+    for (auto* b : { &modeSample, &modeInput })
+    {
+        b->setClickingTogglesState (false);
+        b->setColour (juce::TextButton::buttonOnColourId, col::grain);
+        addAndMakeVisible (*b);
+    }
+    modeSample.setTooltip ("Play a loaded sample with MIDI notes");
+    modeInput.setTooltip ("Granulate live audio from another track (send it to this plugin's Sidechain input)");
+    auto setMode = [this] (int m)
+    {
+        if (auto* mp = proc.apvts.getParameter (ids::mode))
+        {
+            mp->beginChangeGesture();
+            mp->setValueNotifyingHost (mp->convertTo0to1 ((float) m));
+            mp->endChangeGesture();
+        }
+        applyMode();
+    };
+    modeSample.onClick = [setMode] { setMode (0); };
+    modeInput.onClick = [setMode] { setMode (1); };
+
     addAndMakeVisible (xyPad);
-    if (instrument)
-    {
-        waveform = std::make_unique<granula::ui::WaveformView> (proc);
-        waveform->onBrowse = [this] { browseForSample(); };
-        addAndMakeVisible (*waveform);
 
-        loadButton = std::make_unique<juce::TextButton> ("LOAD SAMPLE");
-        loadButton->setColour (juce::TextButton::buttonOnColourId, col::grain);
-        loadButton->onClick = [this] { browseForSample(); };
-        addAndMakeVisible (*loadButton);
+    waveform = std::make_unique<granula::ui::WaveformView> (proc);
+    waveform->onBrowse = [this] { browseForSample(); };
+    addChildComponent (*waveform);
+    loadButton = std::make_unique<juce::TextButton> ("LOAD SAMPLE");
+    loadButton->setColour (juce::TextButton::buttonOnColourId, col::grain);
+    loadButton->onClick = [this] { browseForSample(); };
+    addChildComponent (*loadButton);
+    preview = std::make_unique<granula::ui::PreviewButton> (proc);
+    addChildComponent (*preview);
 
-        preview = std::make_unique<granula::ui::PreviewButton> (proc);
-        addAndMakeVisible (*preview);
-    }
-    else
-    {
-        cloud = std::make_unique<granula::ui::GrainCloud> (proc.getGranular());
-        addAndMakeVisible (*cloud);
-    }
+    cloud = std::make_unique<granula::ui::GrainCloud> (proc.getGranular());
+    addChildComponent (*cloud);
+    inputHint.setText ("Audio in: plugin Sidechain", juce::dontSendNotification);
+    inputHint.setJustificationType (juce::Justification::centredRight);
+    inputHint.setFont (juce::FontOptions (11.0f).withStyle ("Bold"));
+    inputHint.setColour (juce::Label::textColourId, col::textDim);
+    addChildComponent (inputHint);
 
     knob (size, ids::size, "Size", col::grain);
     knob (density, ids::density, "Density", col::grain);
-    knob (position, instrument ? ids::samplePos : ids::position, "Position", col::grain);
-    knob (spray, instrument ? ids::sampleSpray : ids::spray, "Spray", col::grain);
+    knob (positionS, ids::samplePos, "Position", col::grain);
+    knob (sprayS, ids::sampleSpray, "Spray", col::grain);
+    knob (positionI, ids::position, "Position", col::grain);
+    knob (sprayI, ids::spray, "Spray", col::grain);
     knob (pitch, ids::pitch, "Pitch", col::grain, true);
     knob (pitchRand, ids::pitchRand, "Pitch Rnd", col::grain);
     knob (detune, ids::detune, "Detune", col::grain);
     knob (spread, ids::spread, "Spread", col::grain);
     knob (reverse, ids::reverse, "Reverse", col::grain);
     knob (shape, ids::shape, "Shape", col::grain);
-    if (instrument)
-    {
-        knob (scan, ids::scan, "Scan", col::grain, true);
-        knob (attack, ids::attack, "Attack", col::grain);
-        knob (release, ids::release, "Release", col::grain);
-    }
-    else
-    {
-        knob (feedback, ids::feedback, "Feedback", col::grain);
-        knob (grainMix, ids::grainMix, "Mix", col::grain);
-    }
+    knob (scan, ids::scan, "Scan", col::grain, true);
+    knob (attack, ids::attack, "Attack", col::grain);
+    knob (release, ids::release, "Release", col::grain);
+    knob (feedback, ids::feedback, "Feedback", col::grain);
+    knob (grainMix, ids::grainMix, "Mix", col::grain);
 
     scale = std::make_unique<Choice> (s, ids::scale, "Scale");
     grainDiv = std::make_unique<Choice> (s, ids::division, "Rate");
     grainSync = std::make_unique<Toggle> (s, ids::sync, "SYNC", col::grain);
+    freeze = std::make_unique<Toggle> (s, ids::freeze, "FREEZE", col::grain);
+    freeze->setTooltip ("Stop recording new audio and keep granulating what is in the buffer");
     addAndMakeVisible (*scale);
     addAndMakeVisible (*grainDiv);
     addAndMakeVisible (*grainSync);
-    if (! instrument)
-    {
-        freeze = std::make_unique<Toggle> (s, ids::freeze, "FREEZE", col::grain);
-        freeze->setTooltip ("Stop recording new audio and keep granulating what is in the buffer");
-        addAndMakeVisible (*freeze);
-    }
+    addChildComponent (*freeze);
 
     // Tape
     tapeOn = std::make_unique<Power> (s, ids::tapeOn, col::tape);
@@ -126,6 +138,7 @@ MainView::MainView (GranulaProcessor& p)
 
     setSize (kWidth, kHeight);
     refreshPresetBox();
+    applyMode();
     timerCallback();
     startTimerHz (15);
 }
@@ -240,7 +253,7 @@ void MainView::showSaveDialog()
         const auto name = w->getTextEditorContents ("name").trim();
         if (name.isEmpty()) return;
         if (! safe->proc.saveUserPreset (name))
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Granula",
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "artempidor",
                                                     "Couldn't save the preset to\n" + safe->proc.getUserPresetFolder().getFullPathName());
         safe->refreshPresetBox();
     }), true);
@@ -254,6 +267,7 @@ void MainView::browseForSample()
                           {
                               const auto f = fc.getResult();
                               if (f.existsAsFile()) proc.loadSampleAsync (f);
+                              if (inputMode) modeSample.triggerClick();
                           });
 }
 
@@ -265,15 +279,23 @@ static bool isPresetFile (const juce::String& path)
 bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
 {
     for (auto& f : files)
-        if (isPresetFile (f) || (instrument && proc.isSupportedFile (juce::File (f)))) return true;
+        if (isPresetFile (f) || proc.isSupportedFile (juce::File (f))) return true;
     return false;
 }
 
 void MainView::fileDragEnter (const juce::StringArray& files, int, int)
 {
-    if (waveform && ! files.isEmpty() && ! isPresetFile (files[0])) waveform->setDragHighlight (true);
+    if (! files.isEmpty() && ! isPresetFile (files[0]))
+    {
+        if (inputMode) { waveform->setVisible (true); cloud->setVisible (false); }
+        waveform->setDragHighlight (true);
+    }
 }
-void MainView::fileDragExit (const juce::StringArray&) { if (waveform) waveform->setDragHighlight (false); }
+void MainView::fileDragExit (const juce::StringArray&)
+{
+    waveform->setDragHighlight (false);
+    applyMode();
+}
 
 void MainView::filesDropped (const juce::StringArray& files, int, int)
 {
@@ -291,13 +313,19 @@ void MainView::filesDropped (const juce::StringArray& files, int, int)
             refreshPresetBox();
             return;
         }
-        if (instrument && proc.isSupportedFile (f)) { proc.loadSampleAsync (f); return; }
+        if (proc.isSupportedFile (f))
+        {
+            proc.loadSampleAsync (f);
+            if (inputMode) modeSample.triggerClick(); // dropping a sample implies SAMPLE mode
+            return;
+        }
     }
 }
 
 void MainView::timerCallback()
 {
     if (proc.getCurrentProgram() != shownProgram || proc.getPresetChangeCount() != shownChange) refreshPresetBox();
+    if ((proc.apvts.getRawParameterValue (ids::mode)->load() > 0.5f) != inputMode) applyMode();
 
     auto on = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load() > 0.5f; };
 
@@ -318,6 +346,24 @@ void MainView::timerCallback()
     for (juce::Component* c : { (juce::Component*) delaySync.get(), (juce::Component*) delayPing.get(), (juce::Component*) delayDiv.get() })
         c->setAlpha (on (ids::delayOn) ? 1.0f : 0.45f);
     dim ({ revSize.get(), revDecay.get(), revDamp.get(), revPre.get(), revWidth.get(), revMix.get() }, on (ids::revOn));
+}
+
+void MainView::applyMode()
+{
+    inputMode = proc.apvts.getRawParameterValue (ids::mode)->load() > 0.5f;
+    modeSample.setToggleState (! inputMode, juce::dontSendNotification);
+    modeInput.setToggleState (inputMode, juce::dontSendNotification);
+
+    for (juce::Component* c : { (juce::Component*) waveform.get(), (juce::Component*) loadButton.get(), (juce::Component*) preview.get(),
+                                (juce::Component*) positionS.get(), (juce::Component*) sprayS.get(), (juce::Component*) scan.get(),
+                                (juce::Component*) attack.get(), (juce::Component*) release.get() })
+        c->setVisible (! inputMode);
+    for (juce::Component* c : { (juce::Component*) cloud.get(), (juce::Component*) &inputHint, (juce::Component*) positionI.get(),
+                                (juce::Component*) sprayI.get(), (juce::Component*) feedback.get(), (juce::Component*) grainMix.get(),
+                                (juce::Component*) freeze.get() })
+        c->setVisible (inputMode);
+    layoutGrain();
+    repaint();
 }
 
 void MainView::drawSection (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title, juce::Colour accent)
@@ -349,10 +395,10 @@ void MainView::paint (juce::Graphics& g)
     }
     g.setColour (col::text);
     g.setFont (juce::FontOptions (26.0f).withStyle ("Bold"));
-    g.drawText (instrument ? "GRANULA" : "GRANULA FX", head.withTrimmedLeft (44), juce::Justification::centredLeft);
+    g.drawText ("ARTEMPIDOR", head.withTrimmedLeft (44), juce::Justification::centredLeft);
     g.setColour (col::textDim);
     g.setFont (juce::FontOptions (12.0f));
-    g.drawText (instrument ? "granular sampler" : "granular fx", head.withTrimmedLeft (instrument ? 172 : 222).withTrimmedTop (6), juce::Justification::centredLeft);
+    g.drawText ("granular", head.withTrimmedLeft (214).withTrimmedTop (6), juce::Justification::centredLeft);
 
     drawSection (g, grainArea, "GRAIN", col::grain);
     drawSection (g, tapeArea, "CASSETTE", col::tape);
@@ -375,36 +421,7 @@ void MainView::resized()
     grainArea = { 16, 70, kWidth - 32, 334 };
     xyPad.setBounds (grainArea.getX() + 14, grainArea.getY() + 36, 284, 284);
 
-    const int gx = xyPad.getRight() + 14;
-    const int gw = grainArea.getRight() - 14 - gx;
-    if (cloud) cloud->setBounds (gx, grainArea.getY() + 36, gw, 92);
-    if (waveform)
-    {
-        waveform->setBounds (gx, grainArea.getY() + 36, gw, 92);
-        loadButton->setBounds (grainArea.getRight() - 14 - 120, grainArea.getY() + 6, 120, 24);
-        preview->setBounds (loadButton->getX() - 10 - 120, grainArea.getY() + 6, 120, 24);
-    }
-
-    const int cellW = gw / 8, cellH = 88;
-    const int y1 = grainArea.getY() + 36 + 92 + 8;
-    Knob* row1[] = { size.get(), density.get(), position.get(), spray.get(),
-                     instrument ? scan.get() : pitch.get(), instrument ? pitch.get() : pitchRand.get(),
-                     instrument ? pitchRand.get() : detune.get(), instrument ? detune.get() : spread.get() };
-    for (int i = 0; i < 8; ++i) row1[i]->setBounds (gx + i * cellW, y1, cellW, cellH);
-
-    const int y2 = y1 + cellH + 4;
-    std::vector<Knob*> row2;
-    if (instrument) row2 = { spread.get(), reverse.get(), shape.get(), attack.get(), release.get() };
-    else            row2 = { reverse.get(), shape.get(), feedback.get(), grainMix.get() };
-    for (size_t i = 0; i < row2.size(); ++i) row2[i]->setBounds (gx + (int) i * cellW, y2, cellW, cellH);
-
-    const int cx = gx + (int) row2.size() * cellW + 10;
-    const int nCtrl = instrument ? 2 : 3;
-    const int ctrlW = (gw - (int) row2.size() * cellW - 10) / nCtrl - 10;
-    scale->setBounds (cx, y2 + 14, ctrlW, 44);
-    grainSync->setBounds (cx + ctrlW + 10, y2 + 2, ctrlW, 26);
-    grainDiv->setBounds (cx + ctrlW + 10, y2 + 32, ctrlW, 44);
-    if (freeze) freeze->setBounds (cx + 2 * (ctrlW + 10), y2 + 18, ctrlW, 40);
+    layoutGrain();
 
     // ---- FX row
     const int fy = grainArea.getBottom() + 12;
@@ -441,6 +458,47 @@ void MainView::resized()
 
     layoutRow (revArea, r1, { revSize.get(), revDecay.get(), revDamp.get() }, 92);
     layoutRow (revArea, r2, { revPre.get(), revWidth.get(), revMix.get() }, 92);
+}
+
+void MainView::layoutGrain()
+{
+    if (grainArea.isEmpty()) return;
+    const int gx = xyPad.getRight() + 14;
+    const int gw = grainArea.getRight() - 14 - gx;
+    const juce::Rectangle<int> display (gx, grainArea.getY() + 36, gw, 92);
+    waveform->setBounds (display);
+    cloud->setBounds (display);
+    loadButton->setBounds (grainArea.getRight() - 14 - 120, grainArea.getY() + 6, 120, 24);
+    preview->setBounds (loadButton->getX() - 10 - 120, grainArea.getY() + 6, 120, 24);
+    inputHint.setBounds (grainArea.getRight() - 14 - 260, grainArea.getY() + 6, 260, 24);
+    modeSample.setBounds (grainArea.getX() + 100, grainArea.getY() + 6, 84, 24);
+    modeInput.setBounds (modeSample.getRight() + 6, grainArea.getY() + 6, 84, 24);
+
+    const int cellW = gw / 8, cellH = 88;
+    const int y1 = display.getBottom() + 8;
+    const int y2 = y1 + cellH + 4;
+
+    std::vector<Knob*> row1, row2;
+    if (! inputMode)
+    {
+        row1 = { size.get(), density.get(), positionS.get(), sprayS.get(), scan.get(), pitch.get(), pitchRand.get(), detune.get() };
+        row2 = { spread.get(), reverse.get(), shape.get(), attack.get(), release.get() };
+    }
+    else
+    {
+        row1 = { size.get(), density.get(), positionI.get(), sprayI.get(), pitch.get(), pitchRand.get(), detune.get(), spread.get() };
+        row2 = { reverse.get(), shape.get(), feedback.get(), grainMix.get() };
+    }
+    for (size_t i = 0; i < row1.size(); ++i) row1[i]->setBounds (gx + (int) i * cellW, y1, cellW, cellH);
+    for (size_t i = 0; i < row2.size(); ++i) row2[i]->setBounds (gx + (int) i * cellW, y2, cellW, cellH);
+
+    const int cx = gx + (int) row2.size() * cellW + 10;
+    const int nCtrl = inputMode ? 3 : 2;
+    const int ctrlW = (gw - (int) row2.size() * cellW - 10) / nCtrl - 10;
+    scale->setBounds (cx, y2 + 14, ctrlW, 44);
+    grainSync->setBounds (cx + ctrlW + 10, y2 + 2, ctrlW, 26);
+    grainDiv->setBounds (cx + ctrlW + 10, y2 + 32, ctrlW, 44);
+    freeze->setBounds (cx + 2 * (ctrlW + 10), y2 + 18, ctrlW, 40);
 }
 
 // ============================================================================

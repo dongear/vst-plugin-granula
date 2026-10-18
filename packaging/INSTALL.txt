@@ -1,11 +1,5 @@
-GRANULA — installation / установка
-==================================
-
-Two plugins are included / В архиве два плагина:
-  Granula     — instrument: drop a sample in, play it with MIDI
-                инструмент: закиньте сэмпл и играйте по MIDI
-  Granula FX  — effect: granulates the audio on a track
-                эффект: гранулирует звук на дорожке
+ARTEMPIDOR — installation / установка
+=====================================
 
 macOS
   Easiest: double-click "install-mac.command".
@@ -15,34 +9,37 @@ macOS
   Если macOS не даёт открыть: правый клик -> Открыть -> Открыть.
 
   Manual / вручную:
-    *.vst3      -> ~/Library/Audio/Plug-Ins/VST3/
-    *.component -> ~/Library/Audio/Plug-Ins/Components/
+    artempidor.vst3      -> ~/Library/Audio/Plug-Ins/VST3/
+    artempidor.component -> ~/Library/Audio/Plug-Ins/Components/
     then in Terminal / затем в Терминале:
-    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Granula*.vst3 ~/Library/Audio/Plug-Ins/Components/Granula*.component
+    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/artempidor.vst3 ~/Library/Audio/Plug-Ins/Components/artempidor.component
 
 WINDOWS
-  Copy "Granula.vst3" and "Granula FX.vst3" to:
-      C:\Program Files\Common Files\VST3\
-  Then rescan plugins in your DAW.
-  Скопируйте оба .vst3 в эту папку и пересканируйте плагины в DAW.
+  Copy "artempidor.vst3" to  C:\Program Files\Common Files\VST3\
+  and rescan plugins in your DAW.
+  Скопируйте "artempidor.vst3" в эту папку и пересканируйте плагины.
 
 LINUX
-  Copy both .vst3 to ~/.vst3/
+  Copy artempidor.vst3 to ~/.vst3/
 
-USING THE INSTRUMENT (Ableton etc.) / КАК ИГРАТЬ
-  1. Put "Granula" on a MIDI track.
-  2. Drag an audio file (wav/aiff/flac/mp3/ogg) onto the plugin window,
-     or click "LOAD SAMPLE".
-  3. Play notes. C3 = original pitch. Scan moves through the sample.
+HOW TO USE / КАК ПОЛЬЗОВАТЬСЯ
+  artempidor is an instrument: put it on a MIDI track.
+  artempidor — инструмент: ставьте его на MIDI-дорожку.
 
-  1. Поставьте "Granula" на MIDI-дорожку.
-  2. Перетащите аудиофайл в окно плагина или нажмите "LOAD SAMPLE".
-  3. Играйте нотами. C3 = исходная высота. Scan — движение по сэмплу.
+  SAMPLE mode / режим SAMPLE
+    Drag an audio file (wav/aiff/flac/mp3/ogg) onto the plugin window
+    (or click LOAD SAMPLE) and play notes. C3 = original pitch.
+    Перетащите аудиофайл в окно плагина и играйте нотами. C3 = исходная высота.
+
+  INPUT mode / режим INPUT  (granulate another track live)
+    Ableton: in the plugin's device header open "Sidechain" (triangle icon),
+    enable it and choose the source track in "Audio From".
+    Logic: "Side Chain" menu at the top of the plugin window.
+    Ableton: в заголовке плагина откройте "Sidechain", включите его и
+    выберите дорожку-источник в "Audio From".
 
 PRESETS / ПРЕСЕТЫ
-  SAVE button saves your own preset. Presets live in:
-    Documents/Granula Presets/
-  Share a .granula file with a friend: they drag it onto the plugin.
-
-  Кнопка SAVE сохраняет ваш пресет (папка Документы/Granula Presets).
-  Пресетом можно поделиться: другу достаточно перетащить файл .granula на плагин.
+  SAVE saves your own preset to Documents/artempidor/Presets.
+  Share a .artempidor file: the other person drags it onto the plugin.
+  SAVE сохраняет ваш пресет. Чтобы поделиться — перетащите файл
+  .artempidor на окно плагина.

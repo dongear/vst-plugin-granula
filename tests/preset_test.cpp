@@ -7,7 +7,7 @@ int main()
     auto* p = proc.apvts.getParameter (granula::ids::size);
     p->setValueNotifyingHost (p->convertTo0to1 (333.0f));
     if (! proc.saveUserPreset ("Test Preset")) { std::puts ("save FAILED"); return 1; }
-    const auto file = proc.getUserPresetFolder().getChildFile ("Test Preset.granula");
+    const auto file = proc.getUserPresetFolder().getChildFile ("Test Preset.artempidor");
     std::printf ("saved: %s (%d presets)\n", file.getFullPathName().toRawUTF8(), proc.getUserPresets().size());
     p->setValueNotifyingHost (p->convertTo0to1 (50.0f));
     proc.setCurrentProgram (2);

@@ -278,6 +278,17 @@ public:
         g.drawText ("-3 s", area.withTrimmedTop (area.getHeight() - 12), juce::Justification::bottomLeft);
         g.drawText ("+24 st", area, juce::Justification::topLeft);
 
+        if (smoothedLevel < 0.0003f)
+        {
+            g.setColour (colours::text.withAlpha (0.8f));
+            g.setFont (juce::FontOptions (13.0f).withStyle ("Bold"));
+            g.drawText ("Waiting for audio", area.withTrimmedBottom (area.getHeight() * 0.4f), juce::Justification::centred);
+            g.setColour (colours::textDim);
+            g.setFont (juce::FontOptions (11.0f));
+            g.drawText ("Send a track to this plugin's Sidechain input  (Ableton: Sidechain > Audio From)",
+                        area.withTrimmedTop (area.getHeight() * 0.55f), juce::Justification::centred);
+        }
+
         // Input level as a soft bar on the right edge.
         const float lvl = juce::jlimit (0.0f, 1.0f, smoothedLevel);
         g.setColour (colours::grain.withAlpha (0.5f));

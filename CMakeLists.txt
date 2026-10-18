@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Granula VERSION 0.2.0 LANGUAGES C CXX)
+project(Artempidor VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,15 +30,12 @@ else()
 endif()
 set(GRANULA_FORMATS "${GRANULA_DEFAULT_FORMATS}" CACHE STRING "Plugin formats to build")
 
-# Two plugins are built from the same sources:
-#   Granula    - MIDI instrument: drop a sample in, play it with notes
-#   Granula FX - audio effect: granulates whatever comes into the track
 function(granula_add_plugin target)
     cmake_parse_arguments(G "" "PRODUCT;CODE;SYNTH;AU_TYPE;DESC" "CATEGORIES" ${ARGN})
     juce_add_plugin(${target}
-        COMPANY_NAME "Granula Audio"
-        BUNDLE_ID "com.granula-audio.${target}"
-        PLUGIN_MANUFACTURER_CODE Gnla
+        COMPANY_NAME "artempidor"
+        BUNDLE_ID "com.artempidor.${target}"
+        PLUGIN_MANUFACTURER_CODE Artm
         PLUGIN_CODE ${G_CODE}
         FORMATS ${GRANULA_FORMATS}
         PRODUCT_NAME "${G_PRODUCT}"
@@ -79,15 +76,11 @@ function(granula_add_plugin target)
             juce::juce_recommended_warning_flags)
 endfunction()
 
-granula_add_plugin(Granula
-    PRODUCT "Granula" CODE Grn2 SYNTH TRUE AU_TYPE kAudioUnitType_MusicDevice
-    DESC "Granular sampler with cassette, delay and reverb"
+# One plugin: instrument with an audio (sidechain) input, SAMPLE / INPUT modes.
+granula_add_plugin(Artempidor
+    PRODUCT "artempidor" CODE Atp1 SYNTH TRUE AU_TYPE kAudioUnitType_MusicDevice
+    DESC "Granular sampler and live granulator with cassette, delay and reverb"
     CATEGORIES Instrument Sampler)
-
-granula_add_plugin(GranulaFX
-    PRODUCT "Granula FX" CODE Grn1 SYNTH FALSE AU_TYPE kAudioUnitType_Effect
-    DESC "Granular effect with cassette, delay and reverb"
-    CATEGORIES Fx Delay Reverb)
 
 # ---------------------------------------------------------------------------
 # Offline test: renders audio through the DSP chain (no GUI, no host needed).
@@ -101,7 +94,7 @@ endif()
 # Headless UI snapshots (render each editor to a PNG).
 option(GRANULA_BUILD_SNAPSHOT "Build the editor snapshot tools" OFF)
 if(GRANULA_BUILD_SNAPSHOT)
-    foreach(t Granula GranulaFX)
+    foreach(t Artempidor)
         add_executable(${t}_snapshot tests/snapshot.cpp)
         target_include_directories(${t}_snapshot PRIVATE Source)
         target_link_libraries(${t}_snapshot PRIVATE ${t} juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics)
@@ -110,7 +103,7 @@ if(GRANULA_BUILD_SNAPSHOT)
     endforeach()
     add_executable(preset_test tests/preset_test.cpp)
     target_include_directories(preset_test PRIVATE Source)
-    target_link_libraries(preset_test PRIVATE Granula juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics)
+    target_link_libraries(preset_test PRIVATE Artempidor juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics)
     target_compile_definitions(preset_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
-        $<TARGET_PROPERTY:Granula,INTERFACE_COMPILE_DEFINITIONS>)
+        $<TARGET_PROPERTY:Artempidor,INTERFACE_COMPILE_DEFINITIONS>)
 endif()

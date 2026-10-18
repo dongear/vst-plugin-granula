@@ -4,6 +4,8 @@
 
 namespace granula::ids
 {
+// Source: 0 = Sample (MIDI-played sample), 1 = Input (live audio via sidechain)
+inline constexpr const char* mode      = "mode";
 // Grain
 inline constexpr const char* size      = "g_size";
 inline constexpr const char* density   = "g_density";
@@ -76,7 +78,11 @@ inline const juce::StringArray& scaleNames()
     return names;
 }
 
-// The instrument build has sampler controls instead of the live-input ones
-// (position in ms, spray in ms, feedback, freeze, grain mix).
-juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout (bool isInstrument);
+inline const juce::StringArray& modeNames()
+{
+    static const juce::StringArray names { "Sample", "Input" };
+    return names;
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 } // namespace granula

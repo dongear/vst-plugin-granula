@@ -3,12 +3,13 @@
 #include "Parameters.h"
 #include <vector>
 #include <utility>
+#include <string>
 
 namespace granula
 {
 struct Preset
 {
-    const char* name;
+    std::string name;
     std::vector<std::pair<const char*, float>> values; // plain (un-normalised) values; others use defaults
 };
 
@@ -88,8 +89,22 @@ inline const std::vector<Preset>& instrumentPresets()
     return presets;
 }
 
-inline const std::vector<Preset>& factoryPresets (bool isInstrument)
+// One list: SAMPLE-mode presets first, then INPUT-mode presets (which also set Mode = Input).
+inline const std::vector<Preset>& factoryPresets()
 {
-    return isInstrument ? instrumentPresets() : fxPresets();
+    static const std::vector<Preset> all = []
+    {
+        std::vector<Preset> v;
+        for (const auto& p : instrumentPresets())
+            v.push_back ({ "Sample - " + p.name, p.values });
+        for (const auto& p : fxPresets())
+        {
+            Preset q { "Input - " + p.name, p.values };
+            q.values.push_back ({ ids::mode, 1.0f });
+            v.push_back (q);
+        }
+        return v;
+    }();
+    return all;
 }
 } // namespace granula

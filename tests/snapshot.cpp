@@ -12,7 +12,7 @@ int main (int argc, char** argv)
     const juce::String samplePath = argc > 4 ? juce::String (argv[4]) : juce::String();
 
     auto proc = std::make_unique<GranulaProcessor>();
-    proc->setPlayConfigDetails (GranulaProcessor::isInstrument ? 0 : 2, 2, 48000.0, 512);
+    proc->setPlayConfigDetails (2, 2, 48000.0, 512);
     proc->prepareToPlay (48000.0, 512);
     proc->setCurrentProgram (preset);
 

@@ -9,13 +9,12 @@
 #include "dsp/StereoDelay.h"
 #include "dsp/FdnReverb.h"
 
-// One processor class, built twice:
-//  - "Granula"    (JucePlugin_IsSynth = 1): MIDI instrument that granulates a loaded sample
-//  - "Granula FX" (JucePlugin_IsSynth = 0): effect that granulates the live input
+// "artempidor": one instrument with two sources, chosen by the Mode parameter:
+//  - SAMPLE: granulates a loaded audio file, played with MIDI notes
+//  - INPUT:  granulates live audio arriving on the sidechain/input bus
 class GranulaProcessor : public juce::AudioProcessor
 {
 public:
-    static constexpr bool isInstrument = JucePlugin_IsSynth != 0;
 
     GranulaProcessor();
     ~GranulaProcessor() override;
@@ -31,7 +30,7 @@ public:
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return JucePlugin_Name; }
-    bool acceptsMidi() const override { return isInstrument; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 20.0; }
@@ -60,8 +59,8 @@ public:
     static juce::String supportedFileWildcard() { return "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.ogg;*.m4a"; }
     bool isSupportedFile (const juce::File& f) const;
 
-    // ---- user presets (files in ~/Documents/Granula Presets/<plugin>/)
-    static constexpr const char* presetExtension = ".granula";
+    // ---- user presets (files in ~/Documents/artempidor/Presets/)
+    static constexpr const char* presetExtension = ".artempidor";
     juce::File getUserPresetFolder() const;
     juce::Array<juce::File> getUserPresets() const;
     bool saveUserPreset (const juce::String& name);
@@ -106,6 +105,8 @@ private:
     mutable juce::CriticalSection errorLock;
     juce::String sampleError;
     juce::String loadedPath;
+
+    juce::AudioBuffer<float> inputCopy;
 
     // MIDI state
     bool sustainDown = false;

@@ -20,7 +20,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    // Drag & drop of audio files (instrument build)
+    // Drag & drop of samples and preset files
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
     void fileDragEnter (const juce::StringArray&, int, int) override;
     void fileDragExit (const juce::StringArray&) override;
@@ -34,10 +34,12 @@ private:
     void stepPreset (int dir);
     void showSaveDialog();
     void browseForSample();
+    void applyMode();
+    void layoutGrain();
     void drawSection (juce::Graphics&, juce::Rectangle<int>, const juce::String& title, juce::Colour accent);
 
     GranulaProcessor& proc;
-    const bool instrument;
+    bool inputMode = false;
     granula::ui::GranulaLookAndFeel lnf;
     juce::TooltipWindow tooltips { this, 600 };
 
@@ -55,15 +57,17 @@ private:
 
     // Grain
     granula::ui::XYPad xyPad;
-    std::unique_ptr<granula::ui::GrainCloud> cloud;        // FX
-    std::unique_ptr<granula::ui::WaveformView> waveform;   // instrument
-    std::unique_ptr<juce::TextButton> loadButton;          // instrument
-    std::unique_ptr<granula::ui::PreviewButton> preview;   // instrument
+    std::unique_ptr<granula::ui::GrainCloud> cloud;        // INPUT mode
+    std::unique_ptr<granula::ui::WaveformView> waveform;   // SAMPLE mode
+    std::unique_ptr<juce::TextButton> loadButton;          // SAMPLE mode
+    std::unique_ptr<granula::ui::PreviewButton> preview;   // SAMPLE mode
     std::unique_ptr<juce::FileChooser> chooser;
+    juce::TextButton modeSample { "SAMPLE" }, modeInput { "INPUT" };
+    juce::Label inputHint;
 
-    std::unique_ptr<Knob> size, density, position, spray, pitch, pitchRand, detune, spread, reverse, shape;
-    std::unique_ptr<Knob> feedback, grainMix;   // FX only
-    std::unique_ptr<Knob> scan, attack, release; // instrument only
+    std::unique_ptr<Knob> size, density, pitch, pitchRand, detune, spread, reverse, shape;
+    std::unique_ptr<Knob> positionS, sprayS, scan, attack, release;      // SAMPLE mode
+    std::unique_ptr<Knob> positionI, sprayI, feedback, grainMix;          // INPUT mode
     std::unique_ptr<Choice> scale, grainDiv;
     std::unique_ptr<Toggle> grainSync, freeze;
 

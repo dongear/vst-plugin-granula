@@ -1,0 +1,111 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            artifact: Granula-Windows
+          - name: macOS
+            os: macos-14
+            artifact: Granula-macOS
+          - name: Linux
+            os: ubuntu-22.04
+            artifact: Granula-Linux
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libgl1-mesa-dev xvfb
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          else
+            cmake -B build -DCMAKE_BUILD_TYPE=Release
+          fi
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Ad-hoc sign (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          for b in build/Granula_artefacts/Release/VST3/Granula.vst3 \
+                   build/Granula_artefacts/Release/AU/Granula.component \
+                   build/Granula_artefacts/Release/Standalone/Granula.app; do
+            codesign --force --deep --sign - "$b"
+          done
+
+      - name: Validate with pluginval
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux)   PV=pluginval_Linux.zip;   BIN=./pluginval ;;
+            macOS)   PV=pluginval_macOS.zip;   BIN=./pluginval.app/Contents/MacOS/pluginval ;;
+            Windows) PV=pluginval_Windows.zip; BIN=./pluginval.exe ;;
+          esac
+          curl -sSL -o pv.zip "https://github.com/Tracktion/pluginval/releases/latest/download/$PV"
+          unzip -q -o pv.zip
+          ARGS="--strictness-level 5 --skip-gui-tests --validate-in-process --timeout-ms 600000 build/Granula_artefacts/Release/VST3/Granula.vst3"
+          if [ "$RUNNER_OS" == "Linux" ]; then xvfb-run -a $BIN $ARGS; else $BIN $ARGS; fi
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist/${{ matrix.artifact }}
+          A=build/Granula_artefacts/Release
+          cp -R "$A/VST3/Granula.vst3" dist/${{ matrix.artifact }}/
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            cp -R "$A/AU/Granula.component" dist/${{ matrix.artifact }}/
+            cp -R "$A/Standalone/Granula.app" dist/${{ matrix.artifact }}/
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            cp "$A/Standalone/Granula.exe" dist/${{ matrix.artifact }}/
+          else
+            cp "$A/Standalone/Granula" dist/${{ matrix.artifact }}/
+          fi
+          cp packaging/INSTALL.txt dist/${{ matrix.artifact }}/
+          cd dist && cmake -E tar cf ${{ matrix.artifact }}.zip --format=zip ${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true

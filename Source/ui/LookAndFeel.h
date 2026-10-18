@@ -6,16 +6,17 @@ namespace granula::ui
 {
 namespace colours
 {
-inline const juce::Colour bg       { 0xff121317 };
-inline const juce::Colour panel    { 0xff1b1c22 };
-inline const juce::Colour panelHi  { 0xff23242c };
-inline const juce::Colour track    { 0xff2e2f38 };
-inline const juce::Colour text     { 0xffe9e6df };
-inline const juce::Colour textDim  { 0xff8b8a92 };
-inline const juce::Colour grain    { 0xfff2a541 }; // amber
-inline const juce::Colour tape     { 0xffe8684a }; // rust
-inline const juce::Colour delay    { 0xff4cc9b0 }; // teal
-inline const juce::Colour reverb   { 0xff9a86f5 }; // violet
+inline const juce::Colour bg       { 0xff0b0b0b };
+inline const juce::Colour panel    { 0xff151515 };
+inline const juce::Colour panelHi  { 0xff1f1f1f };
+inline const juce::Colour track    { 0xff2e2e2e };
+inline const juce::Colour text     { 0xfff4f4f4 };
+inline const juce::Colour textDim  { 0xff8a8a8a };
+// Monochrome: every section uses white as its accent.
+inline const juce::Colour grain    { 0xffffffff };
+inline const juce::Colour tape     { 0xffffffff };
+inline const juce::Colour delay    { 0xffffffff };
+inline const juce::Colour reverb   { 0xffffffff };
 } // namespace colours
 
 class GranulaLookAndFeel : public juce::LookAndFeel_V4

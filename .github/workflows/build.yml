@@ -53,11 +53,11 @@ jobs:
 
       - name: Ad-hoc sign (macOS)
         if: runner.os == 'macOS'
+        shell: bash
         run: |
-          for b in build/Granula_artefacts/Release/VST3/Granula.vst3 \
-                   build/Granula_artefacts/Release/AU/Granula.component \
-                   build/Granula_artefacts/Release/Standalone/Granula.app; do
-            codesign --force --deep --sign - "$b"
+          for t in Granula GranulaFX; do
+            find "build/${t}_artefacts/Release" -maxdepth 2 \( -name "*.vst3" -o -name "*.component" -o -name "*.app" \) -print0 |
+              while IFS= read -r -d '' b; do codesign --force --deep --sign - "$b"; done
           done
 
       - name: Validate with pluginval
@@ -70,24 +70,34 @@ jobs:
           esac
           curl -sSL -o pv.zip "https://github.com/Tracktion/pluginval/releases/latest/download/$PV"
           unzip -q -o pv.zip
-          ARGS="--strictness-level 5 --skip-gui-tests --validate-in-process --timeout-ms 600000 build/Granula_artefacts/Release/VST3/Granula.vst3"
-          if [ "$RUNNER_OS" == "Linux" ]; then xvfb-run -a $BIN $ARGS; else $BIN $ARGS; fi
+          for P in "build/Granula_artefacts/Release/VST3/Granula.vst3" "build/GranulaFX_artefacts/Release/VST3/Granula FX.vst3"; do
+            echo "== $P"
+            if [ "$RUNNER_OS" == "Linux" ]; then
+              xvfb-run -a $BIN --strictness-level 5 --skip-gui-tests --validate-in-process --timeout-ms 600000 "$P"
+            else
+              $BIN --strictness-level 5 --skip-gui-tests --validate-in-process --timeout-ms 600000 "$P"
+            fi
+          done
 
       - name: Package
         shell: bash
         run: |
-          mkdir -p dist/${{ matrix.artifact }}
-          A=build/Granula_artefacts/Release
-          cp -R "$A/VST3/Granula.vst3" dist/${{ matrix.artifact }}/
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            cp -R "$A/AU/Granula.component" dist/${{ matrix.artifact }}/
-            cp -R "$A/Standalone/Granula.app" dist/${{ matrix.artifact }}/
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-            cp "$A/Standalone/Granula.exe" dist/${{ matrix.artifact }}/
-          else
-            cp "$A/Standalone/Granula" dist/${{ matrix.artifact }}/
-          fi
-          cp packaging/INSTALL.txt dist/${{ matrix.artifact }}/
+          D="dist/${{ matrix.artifact }}"
+          mkdir -p "$D"
+          for t in Granula GranulaFX; do
+            A="build/${t}_artefacts/Release"
+            cp -R "$A"/VST3/*.vst3 "$D"/
+            if [ "$RUNNER_OS" == "macOS" ]; then
+              cp -R "$A"/AU/*.component "$D"/
+              mkdir -p "$D/Standalone" && cp -R "$A"/Standalone/*.app "$D/Standalone"/
+            elif [ "$RUNNER_OS" == "Windows" ]; then
+              mkdir -p "$D/Standalone" && cp "$A"/Standalone/*.exe "$D/Standalone"/
+            else
+              mkdir -p "$D/Standalone" && find "$A/Standalone" -maxdepth 1 -type f -exec cp {} "$D/Standalone"/ \;
+            fi
+          done
+          cp packaging/INSTALL.txt "$D"/
+          if [ "$RUNNER_OS" == "macOS" ]; then cp packaging/install-mac.command "$D"/ && chmod +x "$D/install-mac.command"; fi
           cd dist && cmake -E tar cf ${{ matrix.artifact }}.zip --format=zip ${{ matrix.artifact }}
 
       - uses: actions/upload-artifact@v4

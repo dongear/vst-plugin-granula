@@ -5,8 +5,8 @@ namespace col = granula::ui::colours;
 
 MainView::MainView (GranulaProcessor& p)
     : proc (p),
-      xyPad (p.apvts, ids::size, ids::density, ids::sync),
-      cloud (p.getGranular())
+      instrument (GranulaProcessor::isInstrument),
+      xyPad (p.apvts, ids::size, ids::density, ids::sync)
 {
     setLookAndFeel (&lnf);
     auto& s = proc.apvts;
@@ -17,28 +17,17 @@ MainView::MainView (GranulaProcessor& p)
         addAndMakeVisible (*k);
     };
 
-    // Header
-    for (int i = 0; i < proc.getNumPrograms(); ++i)
-        presetBox.addItem (proc.getProgramName (i), i + 1);
-    presetBox.onChange = [this]
-    {
-        const int idx = presetBox.getSelectedId() - 1;
-        if (idx >= 0 && idx != proc.getCurrentProgram())
-            proc.setCurrentProgram (idx);
-        shownProgram = idx;
-    };
+    // Header: presets
+    presetBox.onChange = [this] { presetChosen (presetBox.getSelectedId()); };
     presetBox.setColour (juce::ComboBox::backgroundColourId, col::panel);
+    presetBox.setTextWhenNothingSelected ("Preset");
     addAndMakeVisible (presetBox);
 
-    auto step = [this] (int dir)
-    {
-        const int n = proc.getNumPrograms();
-        proc.setCurrentProgram ((proc.getCurrentProgram() + dir + n) % n);
-        refreshPresetBox();
-    };
-    prevPreset.onClick = [step] { step (-1); };
-    nextPreset.onClick = [step] { step (1); };
-    for (auto* b : { &prevPreset, &nextPreset })
+    prevPreset.onClick = [this] { stepPreset (-1); };
+    nextPreset.onClick = [this] { stepPreset (1); };
+    savePreset.onClick = [this] { showSaveDialog(); };
+    savePreset.setTooltip ("Save the current settings as your own preset");
+    for (auto* b : { &prevPreset, &nextPreset, &savePreset })
     {
         b->setColour (juce::TextButton::buttonOnColourId, col::grain);
         addAndMakeVisible (*b);
@@ -47,28 +36,60 @@ MainView::MainView (GranulaProcessor& p)
 
     // Grain
     addAndMakeVisible (xyPad);
-    addAndMakeVisible (cloud);
+    if (instrument)
+    {
+        waveform = std::make_unique<granula::ui::WaveformView> (proc);
+        waveform->onBrowse = [this] { browseForSample(); };
+        addAndMakeVisible (*waveform);
+
+        loadButton = std::make_unique<juce::TextButton> ("LOAD SAMPLE");
+        loadButton->setColour (juce::TextButton::buttonOnColourId, col::grain);
+        loadButton->onClick = [this] { browseForSample(); };
+        addAndMakeVisible (*loadButton);
+
+        preview = std::make_unique<granula::ui::PreviewButton> (proc);
+        addAndMakeVisible (*preview);
+    }
+    else
+    {
+        cloud = std::make_unique<granula::ui::GrainCloud> (proc.getGranular());
+        addAndMakeVisible (*cloud);
+    }
+
     knob (size, ids::size, "Size", col::grain);
     knob (density, ids::density, "Density", col::grain);
-    knob (position, ids::position, "Position", col::grain);
-    knob (spray, ids::spray, "Spray", col::grain);
+    knob (position, instrument ? ids::samplePos : ids::position, "Position", col::grain);
+    knob (spray, instrument ? ids::sampleSpray : ids::spray, "Spray", col::grain);
     knob (pitch, ids::pitch, "Pitch", col::grain, true);
     knob (pitchRand, ids::pitchRand, "Pitch Rnd", col::grain);
     knob (detune, ids::detune, "Detune", col::grain);
     knob (spread, ids::spread, "Spread", col::grain);
     knob (reverse, ids::reverse, "Reverse", col::grain);
     knob (shape, ids::shape, "Shape", col::grain);
-    knob (feedback, ids::feedback, "Feedback", col::grain);
-    knob (grainMix, ids::grainMix, "Mix", col::grain);
+    if (instrument)
+    {
+        knob (scan, ids::scan, "Scan", col::grain, true);
+        knob (attack, ids::attack, "Attack", col::grain);
+        knob (release, ids::release, "Release", col::grain);
+    }
+    else
+    {
+        knob (feedback, ids::feedback, "Feedback", col::grain);
+        knob (grainMix, ids::grainMix, "Mix", col::grain);
+    }
 
     scale = std::make_unique<Choice> (s, ids::scale, "Scale");
     grainDiv = std::make_unique<Choice> (s, ids::division, "Rate");
     grainSync = std::make_unique<Toggle> (s, ids::sync, "SYNC", col::grain);
-    freeze = std::make_unique<Toggle> (s, ids::freeze, "FREEZE", col::grain);
-    freeze->setTooltip ("Stop recording new audio and keep granulating what is in the buffer");
-    for (juce::Component* c : { (juce::Component*) scale.get(), (juce::Component*) grainDiv.get(),
-                                (juce::Component*) grainSync.get(), (juce::Component*) freeze.get() })
-        addAndMakeVisible (c);
+    addAndMakeVisible (*scale);
+    addAndMakeVisible (*grainDiv);
+    addAndMakeVisible (*grainSync);
+    if (! instrument)
+    {
+        freeze = std::make_unique<Toggle> (s, ids::freeze, "FREEZE", col::grain);
+        freeze->setTooltip ("Stop recording new audio and keep granulating what is in the buffer");
+        addAndMakeVisible (*freeze);
+    }
 
     // Tape
     tapeOn = std::make_unique<Power> (s, ids::tapeOn, col::tape);
@@ -111,15 +132,172 @@ MainView::MainView (GranulaProcessor& p)
 
 MainView::~MainView() { setLookAndFeel (nullptr); }
 
+// ---------------------------------------------------------------- presets UI
+
+namespace
+{
+constexpr int kUserBase = 1000, kActionSave = 9001, kActionFolder = 9002, kActionDelete = 9003;
+}
+
+void MainView::rebuildPresetMenu()
+{
+    userFiles = proc.getUserPresets();
+    presetBox.clear (juce::dontSendNotification);
+
+    presetBox.addSectionHeading ("Factory");
+    for (int i = 0; i < proc.getNumPrograms(); ++i)
+        presetBox.addItem (proc.getProgramName (i), i + 1);
+
+    if (! userFiles.isEmpty())
+    {
+        presetBox.addSeparator();
+        presetBox.addSectionHeading ("My presets");
+        for (int i = 0; i < userFiles.size(); ++i)
+            presetBox.addItem (userFiles[i].getFileNameWithoutExtension(), kUserBase + i);
+    }
+
+    presetBox.addSeparator();
+    presetBox.addItem ("Save current settings...", kActionSave);
+    presetBox.addItem ("Open presets folder", kActionFolder);
+    if (proc.getUserPresetName().isNotEmpty())
+        presetBox.addItem ("Delete \"" + proc.getUserPresetName() + "\"", kActionDelete);
+}
+
 void MainView::refreshPresetBox()
 {
     shownProgram = proc.getCurrentProgram();
-    presetBox.setSelectedId (shownProgram + 1, juce::dontSendNotification);
+    shownChange = proc.getPresetChangeCount();
+    rebuildPresetMenu();
+
+    const auto user = proc.getUserPresetName();
+    if (user.isEmpty())
+    {
+        presetBox.setSelectedId (shownProgram + 1, juce::dontSendNotification);
+        return;
+    }
+    for (int i = 0; i < userFiles.size(); ++i)
+        if (userFiles[i].getFileNameWithoutExtension() == user)
+        {
+            presetBox.setSelectedId (kUserBase + i, juce::dontSendNotification);
+            return;
+        }
+    presetBox.setText (user, juce::dontSendNotification);
+}
+
+void MainView::presetChosen (int id)
+{
+    if (id <= 0) return;
+    if (id <= proc.getNumPrograms()) proc.setCurrentProgram (id - 1);
+    else if (id >= kUserBase && id < kUserBase + userFiles.size()) proc.loadUserPreset (userFiles[id - kUserBase]);
+    else if (id == kActionSave) showSaveDialog();
+    else if (id == kActionFolder)
+    {
+        auto folder = proc.getUserPresetFolder();
+        folder.createDirectory();
+        folder.startAsProcess();
+    }
+    else if (id == kActionDelete)
+    {
+        for (auto& f : userFiles)
+            if (f.getFileNameWithoutExtension() == proc.getUserPresetName()) { proc.deleteUserPreset (f); break; }
+    }
+    refreshPresetBox();
+}
+
+void MainView::stepPreset (int dir)
+{
+    // Factory presets first, then the user's own, as one continuous list.
+    const int nf = proc.getNumPrograms(), total = nf + userFiles.size();
+    int cur = proc.getCurrentProgram();
+    const auto user = proc.getUserPresetName();
+    if (user.isNotEmpty())
+        for (int i = 0; i < userFiles.size(); ++i)
+            if (userFiles[i].getFileNameWithoutExtension() == user) cur = nf + i;
+
+    const int next = (cur + dir + total) % total;
+    if (next < nf) proc.setCurrentProgram (next);
+    else proc.loadUserPreset (userFiles[next - nf]);
+    refreshPresetBox();
+}
+
+void MainView::showSaveDialog()
+{
+    auto* w = new juce::AlertWindow ("Save preset", "Name your preset:", juce::MessageBoxIconType::NoIcon, this);
+    w->setLookAndFeel (&lnf);
+    w->setColour (juce::AlertWindow::backgroundColourId, col::panel);
+    w->setColour (juce::AlertWindow::textColourId, col::text);
+    const auto suggested = proc.getUserPresetName().isNotEmpty() ? proc.getUserPresetName() : juce::String ("My preset");
+    w->addTextEditor ("name", suggested);
+    w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    for (int i = 0; i < w->getNumButtons(); ++i)
+        if (auto* b = w->getButton (i)) b->setColour (juce::TextButton::buttonOnColourId, col::grain);
+
+    juce::Component::SafePointer<MainView> safe (this);
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w] (int result)
+    {
+        if (safe == nullptr || result != 1) return;
+        const auto name = w->getTextEditorContents ("name").trim();
+        if (name.isEmpty()) return;
+        if (! safe->proc.saveUserPreset (name))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Granula",
+                                                    "Couldn't save the preset to\n" + safe->proc.getUserPresetFolder().getFullPathName());
+        safe->refreshPresetBox();
+    }), true);
+}
+
+void MainView::browseForSample()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Load a sample", juce::File(), GranulaProcessor::supportedFileWildcard());
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              const auto f = fc.getResult();
+                              if (f.existsAsFile()) proc.loadSampleAsync (f);
+                          });
+}
+
+static bool isPresetFile (const juce::String& path)
+{
+    return path.endsWithIgnoreCase (GranulaProcessor::presetExtension);
+}
+
+bool MainView::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (auto& f : files)
+        if (isPresetFile (f) || (instrument && proc.isSupportedFile (juce::File (f)))) return true;
+    return false;
+}
+
+void MainView::fileDragEnter (const juce::StringArray& files, int, int)
+{
+    if (waveform && ! files.isEmpty() && ! isPresetFile (files[0])) waveform->setDragHighlight (true);
+}
+void MainView::fileDragExit (const juce::StringArray&) { if (waveform) waveform->setDragHighlight (false); }
+
+void MainView::filesDropped (const juce::StringArray& files, int, int)
+{
+    if (waveform) waveform->setDragHighlight (false);
+    for (auto& path : files)
+    {
+        const juce::File f (path);
+        if (isPresetFile (path))
+        {
+            // Shared presets are copied into the user's folder so they stay in the list.
+            auto dest = proc.getUserPresetFolder().getChildFile (f.getFileName());
+            if (f.getParentDirectory() != proc.getUserPresetFolder() && proc.getUserPresetFolder().createDirectory())
+                f.copyFileTo (dest);
+            proc.loadUserPreset (dest.existsAsFile() ? dest : f);
+            refreshPresetBox();
+            return;
+        }
+        if (instrument && proc.isSupportedFile (f)) { proc.loadSampleAsync (f); return; }
+    }
 }
 
 void MainView::timerCallback()
 {
-    if (proc.getCurrentProgram() != shownProgram) refreshPresetBox();
+    if (proc.getCurrentProgram() != shownProgram || proc.getPresetChangeCount() != shownChange) refreshPresetBox();
 
     auto on = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load() > 0.5f; };
 
@@ -171,10 +349,10 @@ void MainView::paint (juce::Graphics& g)
     }
     g.setColour (col::text);
     g.setFont (juce::FontOptions (26.0f).withStyle ("Bold"));
-    g.drawText ("GRANULA", head.withTrimmedLeft (44), juce::Justification::centredLeft);
+    g.drawText (instrument ? "GRANULA" : "GRANULA FX", head.withTrimmedLeft (44), juce::Justification::centredLeft);
     g.setColour (col::textDim);
     g.setFont (juce::FontOptions (12.0f));
-    g.drawText ("granular texture machine", head.withTrimmedLeft (172).withTrimmedTop (6), juce::Justification::centredLeft);
+    g.drawText (instrument ? "granular sampler" : "granular fx", head.withTrimmedLeft (instrument ? 172 : 222).withTrimmedTop (6), juce::Justification::centredLeft);
 
     drawSection (g, grainArea, "GRAIN", col::grain);
     drawSection (g, tapeArea, "CASSETTE", col::tape);
@@ -188,6 +366,7 @@ void MainView::resized()
     presetBox.setBounds (kWidth / 2 - 130, 16, 260, 30);
     prevPreset.setBounds (presetBox.getX() - 36, 18, 28, 26);
     nextPreset.setBounds (presetBox.getRight() + 8, 18, 28, 26);
+    savePreset.setBounds (nextPreset.getRight() + 10, 18, 64, 26);
     outKnob->setBounds (kWidth - 96, 2, 72, 70);
     outKnob->slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     outKnob->slider.setPopupDisplayEnabled (true, true, this);
@@ -198,23 +377,34 @@ void MainView::resized()
 
     const int gx = xyPad.getRight() + 14;
     const int gw = grainArea.getRight() - 14 - gx;
-    cloud.setBounds (gx, grainArea.getY() + 36, gw, 92);
+    if (cloud) cloud->setBounds (gx, grainArea.getY() + 36, gw, 92);
+    if (waveform)
+    {
+        waveform->setBounds (gx, grainArea.getY() + 36, gw, 92);
+        loadButton->setBounds (grainArea.getRight() - 14 - 120, grainArea.getY() + 6, 120, 24);
+        preview->setBounds (loadButton->getX() - 10 - 120, grainArea.getY() + 6, 120, 24);
+    }
 
     const int cellW = gw / 8, cellH = 88;
-    int y1 = cloud.getBottom() + 8;
-    Knob* row1[] = { size.get(), density.get(), position.get(), spray.get(), pitch.get(), pitchRand.get(), detune.get(), spread.get() };
+    const int y1 = grainArea.getY() + 36 + 92 + 8;
+    Knob* row1[] = { size.get(), density.get(), position.get(), spray.get(),
+                     instrument ? scan.get() : pitch.get(), instrument ? pitch.get() : pitchRand.get(),
+                     instrument ? pitchRand.get() : detune.get(), instrument ? detune.get() : spread.get() };
     for (int i = 0; i < 8; ++i) row1[i]->setBounds (gx + i * cellW, y1, cellW, cellH);
 
-    int y2 = y1 + cellH + 4;
-    Knob* row2[] = { reverse.get(), shape.get(), feedback.get(), grainMix.get() };
-    for (int i = 0; i < 4; ++i) row2[i]->setBounds (gx + i * cellW, y2, cellW, cellH);
+    const int y2 = y1 + cellH + 4;
+    std::vector<Knob*> row2;
+    if (instrument) row2 = { spread.get(), reverse.get(), shape.get(), attack.get(), release.get() };
+    else            row2 = { reverse.get(), shape.get(), feedback.get(), grainMix.get() };
+    for (size_t i = 0; i < row2.size(); ++i) row2[i]->setBounds (gx + (int) i * cellW, y2, cellW, cellH);
 
-    const int cx = gx + 4 * cellW + 10;
-    const int ctrlW = (gw - 4 * cellW - 10) / 3 - 10;
+    const int cx = gx + (int) row2.size() * cellW + 10;
+    const int nCtrl = instrument ? 2 : 3;
+    const int ctrlW = (gw - (int) row2.size() * cellW - 10) / nCtrl - 10;
     scale->setBounds (cx, y2 + 14, ctrlW, 44);
     grainSync->setBounds (cx + ctrlW + 10, y2 + 2, ctrlW, 26);
     grainDiv->setBounds (cx + ctrlW + 10, y2 + 32, ctrlW, 44);
-    freeze->setBounds (cx + 2 * (ctrlW + 10), y2 + 18, ctrlW, 40);
+    if (freeze) freeze->setBounds (cx + 2 * (ctrlW + 10), y2 + 18, ctrlW, 40);
 
     // ---- FX row
     const int fy = grainArea.getBottom() + 12;

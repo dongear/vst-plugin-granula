@@ -7,6 +7,45 @@
 namespace granula
 {
 
+// Random pitch offset within ±range semitones, optionally snapped to a scale.
+// scale: 0 Free, 1 Chromatic, 2 Major, 3 Minor, 4 Pentatonic, 5 Fifths, 6 Octaves
+inline float randomScalePitch (float range, int scale, Rng& rng)
+{
+    if (range <= 0.0f) return 0.0f;
+    const float r = rng.bi() * range;
+    if (scale == 0) return r;
+
+    static const int chromatic[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+    static const int major[] = { 0, 2, 4, 5, 7, 9, 11 };
+    static const int minor[] = { 0, 2, 3, 5, 7, 8, 10 };
+    static const int penta[] = { 0, 2, 4, 7, 9 };
+    static const int fifths[] = { 0, 7 };
+    static const int octaves[] = { 0 };
+
+    const int* deg = chromatic; int nDeg = 12;
+    switch (scale)
+    {
+        case 2: deg = major;   nDeg = 7; break;
+        case 3: deg = minor;   nDeg = 7; break;
+        case 4: deg = penta;   nDeg = 5; break;
+        case 5: deg = fifths;  nDeg = 2; break;
+        case 6: deg = octaves; nDeg = 1; break;
+        default: break;
+    }
+
+    float best = 0.0f, bestDist = 1e9f;
+    const int maxSemi = (int) std::ceil (range);
+    for (int oct = -4; oct <= 4; ++oct)
+        for (int d = 0; d < nDeg; ++d)
+        {
+            const int st = oct * 12 + deg[d];
+            if (std::abs (st) > maxSemi) continue;
+            const float dist = std::abs ((float) st - r);
+            if (dist < bestDist) { bestDist = dist; best = (float) st; }
+        }
+    return best;
+}
+
 // Real-time granular processor working on the live input.
 // The input is continuously recorded into a circular buffer; grains are short,
 // windowed snippets read back from that buffer with their own pitch,
@@ -145,43 +184,7 @@ private:
         return 1.0f;
     }
 
-    float randomPitch (const Params& p)
-    {
-        if (p.pitchRandSemis <= 0.0f) return 0.0f;
-        const float r = rng.bi() * p.pitchRandSemis;
-        if (p.scale == Free) return r;
-
-        static const int chromatic[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
-        static const int major[] = { 0, 2, 4, 5, 7, 9, 11 };
-        static const int minor[] = { 0, 2, 3, 5, 7, 8, 10 };
-        static const int penta[] = { 0, 2, 4, 7, 9 };
-        static const int fifths[] = { 0, 7 };
-        static const int octaves[] = { 0 };
-
-        const int* deg = chromatic; int nDeg = 12;
-        switch (p.scale)
-        {
-            case Major:      deg = major;   nDeg = 7; break;
-            case Minor:      deg = minor;   nDeg = 7; break;
-            case Pentatonic: deg = penta;   nDeg = 5; break;
-            case Fifths:     deg = fifths;  nDeg = 2; break;
-            case Octaves:    deg = octaves; nDeg = 1; break;
-            default: break;
-        }
-
-        // Nearest allowed degree within the random range.
-        float best = 0.0f, bestDist = 1e9f;
-        const int maxSemi = (int) std::ceil (p.pitchRandSemis);
-        for (int oct = -3; oct <= 3; ++oct)
-            for (int d = 0; d < nDeg; ++d)
-            {
-                const int s = oct * 12 + deg[d];
-                if (std::abs (s) > maxSemi) continue;
-                const float dist = std::abs ((float) s - r);
-                if (dist < bestDist) { bestDist = dist; best = (float) s; }
-            }
-        return best;
-    }
+    float randomPitch (const Params& p) { return randomScalePitch (p.pitchRandSemis, p.scale, rng); }
 
     void spawnGrain (const Params& p, float norm)
     {

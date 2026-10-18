@@ -21,6 +21,12 @@ inline constexpr const char* shape     = "g_shape";
 inline constexpr const char* feedback  = "g_feedback";
 inline constexpr const char* freeze    = "g_freeze";
 inline constexpr const char* grainMix  = "g_mix";
+// Sampler (instrument only)
+inline constexpr const char* samplePos  = "s_pos";
+inline constexpr const char* sampleSpray = "s_spray";
+inline constexpr const char* scan       = "s_scan";
+inline constexpr const char* attack     = "s_attack";
+inline constexpr const char* release    = "s_release";
 // Tape
 inline constexpr const char* tapeOn      = "t_on";
 inline constexpr const char* tapeDrive   = "t_drive";
@@ -70,5 +76,7 @@ inline const juce::StringArray& scaleNames()
     return names;
 }
 
-juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+// The instrument build has sampler controls instead of the live-input ones
+// (position in ms, spray in ms, feedback, freeze, grain mix).
+juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout (bool isInstrument);
 } // namespace granula

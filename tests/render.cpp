@@ -4,6 +4,7 @@
 // and prints level / sanity stats. Exits non-zero on NaN/Inf or runaway levels.
 
 #include "dsp/GranularEngine.h"
+#include "dsp/GranularSampler.h"
 #include "dsp/TapeSaturation.h"
 #include "dsp/StereoDelay.h"
 #include "dsp/FdnReverb.h"
@@ -176,5 +177,52 @@ int main (int argc, char** argv)
         writeWav (outDir + "/" + st.name + ".wav", L, R, sr);
     }
     writeWav (outDir + "/00_input.wav", inL, inR, sr);
+
+    // ---- Sampler (instrument): the test phrase as a sample, played with notes
+    struct SamplerCase { std::string name; GranularSampler::Params p; };
+    std::vector<SamplerCase> cases;
+    { SamplerCase c; c.name = "s1_pad_chord"; c.p.sizeMs = 380; c.p.intervalSamples = sr / 26.0f; c.p.position = 0.3f;
+      c.p.spray = 0.08f; c.p.scan = 0.05f; c.p.pitchRandSemis = 12; c.p.scale = GranularEngine::Octaves; c.p.detuneCents = 9;
+      c.p.spread = 1.0f; c.p.shape = 0.05f; c.p.attackMs = 900; c.p.releaseMs = 2500; cases.push_back (c); }
+    { SamplerCase c; c.name = "s2_timestretch"; c.p.sizeMs = 90; c.p.intervalSamples = sr / 45.0f; c.p.position = 0.0f;
+      c.p.spray = 0.002f; c.p.scan = 0.5f; c.p.attackMs = 5; c.p.releaseMs = 300; cases.push_back (c); }
+    { SamplerCase c; c.name = "s3_stress"; c.p.sizeMs = 1000; c.p.intervalSamples = sr / 100.0f; c.p.position = 0.9f;
+      c.p.spray = 1.0f; c.p.scan = -2.0f; c.p.pitchSemis = 24; c.p.pitchRandSemis = 24; c.p.reverseProb = 0.5f;
+      c.p.attackMs = 1; c.p.releaseMs = 10; cases.push_back (c); }
+
+    SampleData sample;
+    sample.left = inL; sample.right = inR; sample.sampleRate = 44100.0; // deliberately different rate
+    sample.buildPeaks();
+
+    for (const auto& c : cases)
+    {
+        GranularSampler smp; TapeSaturation tp; StereoDelay dl; FdnReverb rv;
+        smp.prepare (sr); tp.prepare (sr); dl.prepare (sr); rv.prepare (sr);
+        TapeSaturation::Params tpp; StereoDelay::Params dpp; dpp.mix = 0.2f; FdnReverb::Params rpp; rpp.mix = 0.35f;
+        const int n = sr * 10;
+        std::vector<float> L ((size_t) n, 0.0f), R ((size_t) n, 0.0f);
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int pos = 0; pos < n; pos += block)
+        {
+            const int len = std::min (block, n - pos);
+            if (pos == 0) { smp.noteOn (48, 0.9f); smp.noteOn (55, 0.8f); smp.noteOn (60, 0.8f); smp.noteOn (64, 0.7f); }
+            if (c.name == "s3_stress" && pos == sr * 2) for (int k = 0; k < 12; ++k) smp.noteOn (40 + k * 3, 1.0f); // voice stealing
+            if (pos >= sr * 6 && pos < sr * 6 + block) smp.allNotesOff();
+            smp.render (L.data() + pos, R.data() + pos, len, c.p, &sample);
+            tp.process (L.data() + pos, R.data() + pos, len, tpp);
+            dl.process (L.data() + pos, R.data() + pos, len, dpp);
+            rv.process (L.data() + pos, R.data() + pos, len, rpp);
+        }
+        const double secs = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+        float peak = 0; double sumSq = 0; bool bad = false;
+        for (int i = 0; i < n; ++i) for (float v : { L[(size_t) i], R[(size_t) i] })
+        { if (! std::isfinite (v)) bad = true; peak = std::max (peak, std::abs (v)); sumSq += (double) v * v; }
+        const bool fail = bad || peak > 8.0f || peak < 0.01f;
+        failures += fail ? 1 : 0;
+        std::printf ("%-22s peak %6.2f dBFS  rms %6.1f dBFS  cpu %5.2f%%  %s\n", c.name.c_str(),
+                     20.0 * std::log10 (std::max (1e-9f, peak)), 10.0 * std::log10 (std::max (1e-24, sumSq / (2.0 * n))),
+                     secs / 10.0 * 100.0, fail ? "FAIL" : "ok");
+        writeWav (outDir + "/" + c.name + ".wav", L, R, sr);
+    }
     return failures == 0 ? 0 : 1;
 }

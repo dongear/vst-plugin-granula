@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Granula VERSION 0.1.0 LANGUAGES C CXX)
+project(Granula VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,46 +30,64 @@ else()
 endif()
 set(GRANULA_FORMATS "${GRANULA_DEFAULT_FORMATS}" CACHE STRING "Plugin formats to build")
 
-juce_add_plugin(Granula
-    COMPANY_NAME "Granula Audio"
-    BUNDLE_ID "com.granula-audio.granula"
-    PLUGIN_MANUFACTURER_CODE Gnla
-    PLUGIN_CODE Grn1
-    FORMATS ${GRANULA_FORMATS}
-    PRODUCT_NAME "Granula"
-    DESCRIPTION "Granular texture machine with cassette, delay and reverb"
-    IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
-    NEEDS_MIDI_OUTPUT FALSE
-    IS_MIDI_EFFECT FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD FALSE
-    VST3_CATEGORIES Fx Delay Reverb
-    AU_MAIN_TYPE kAudioUnitType_Effect)
+# Two plugins are built from the same sources:
+#   Granula    - MIDI instrument: drop a sample in, play it with notes
+#   Granula FX - audio effect: granulates whatever comes into the track
+function(granula_add_plugin target)
+    cmake_parse_arguments(G "" "PRODUCT;CODE;SYNTH;AU_TYPE;DESC" "CATEGORIES" ${ARGN})
+    juce_add_plugin(${target}
+        COMPANY_NAME "Granula Audio"
+        BUNDLE_ID "com.granula-audio.${target}"
+        PLUGIN_MANUFACTURER_CODE Gnla
+        PLUGIN_CODE ${G_CODE}
+        FORMATS ${GRANULA_FORMATS}
+        PRODUCT_NAME "${G_PRODUCT}"
+        DESCRIPTION "${G_DESC}"
+        IS_SYNTH ${G_SYNTH}
+        NEEDS_MIDI_INPUT ${G_SYNTH}
+        NEEDS_MIDI_OUTPUT FALSE
+        IS_MIDI_EFFECT FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        COPY_PLUGIN_AFTER_BUILD FALSE
+        VST3_CATEGORIES ${G_CATEGORIES}
+        AU_MAIN_TYPE ${G_AU_TYPE})
 
-target_sources(Granula PRIVATE
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp
-    Source/Parameters.cpp)
+    target_sources(${target} PRIVATE
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp
+        Source/Parameters.cpp)
 
-target_compile_definitions(Granula PUBLIC
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    target_compile_definitions(${target} PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_USE_MP3AUDIOFORMAT=1
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0)
 
-if("Standalone" IN_LIST GRANULA_FORMATS)
-    target_link_libraries(Granula PRIVATE juce::juce_audio_utils)
-endif()
+    if("Standalone" IN_LIST GRANULA_FORMATS)
+        target_link_libraries(${target} PRIVATE juce::juce_audio_utils)
+    endif()
 
-target_link_libraries(Granula
-    PRIVATE
-        juce::juce_audio_processors
-        juce::juce_gui_basics
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
+    target_link_libraries(${target}
+        PRIVATE
+            juce::juce_audio_processors
+            juce::juce_audio_formats
+            juce::juce_gui_basics
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_lto_flags
+            juce::juce_recommended_warning_flags)
+endfunction()
+
+granula_add_plugin(Granula
+    PRODUCT "Granula" CODE Grn2 SYNTH TRUE AU_TYPE kAudioUnitType_MusicDevice
+    DESC "Granular sampler with cassette, delay and reverb"
+    CATEGORIES Instrument Sampler)
+
+granula_add_plugin(GranulaFX
+    PRODUCT "Granula FX" CODE Grn1 SYNTH FALSE AU_TYPE kAudioUnitType_Effect
+    DESC "Granular effect with cassette, delay and reverb"
+    CATEGORIES Fx Delay Reverb)
 
 # ---------------------------------------------------------------------------
 # Offline test: renders audio through the DSP chain (no GUI, no host needed).
@@ -80,12 +98,19 @@ if(GRANULA_BUILD_TESTS)
     target_include_directories(granula_render PRIVATE Source)
 endif()
 
-# Headless UI snapshot (renders the editor to a PNG).
-option(GRANULA_BUILD_SNAPSHOT "Build the editor snapshot tool" OFF)
+# Headless UI snapshots (render each editor to a PNG).
+option(GRANULA_BUILD_SNAPSHOT "Build the editor snapshot tools" OFF)
 if(GRANULA_BUILD_SNAPSHOT)
-    add_executable(granula_snapshot tests/snapshot.cpp)
-    target_include_directories(granula_snapshot PRIVATE Source)
-    target_link_libraries(granula_snapshot PRIVATE Granula juce::juce_audio_processors juce::juce_gui_basics)
-    target_compile_definitions(granula_snapshot PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+    foreach(t Granula GranulaFX)
+        add_executable(${t}_snapshot tests/snapshot.cpp)
+        target_include_directories(${t}_snapshot PRIVATE Source)
+        target_link_libraries(${t}_snapshot PRIVATE ${t} juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics)
+        target_compile_definitions(${t}_snapshot PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+            $<TARGET_PROPERTY:${t},INTERFACE_COMPILE_DEFINITIONS>)
+    endforeach()
+    add_executable(preset_test tests/preset_test.cpp)
+    target_include_directories(preset_test PRIVATE Source)
+    target_link_libraries(preset_test PRIVATE Granula juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics)
+    target_compile_definitions(preset_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
         $<TARGET_PROPERTY:Granula,INTERFACE_COMPILE_DEFINITIONS>)
 endif()

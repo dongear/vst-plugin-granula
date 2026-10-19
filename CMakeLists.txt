@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Artempidor VERSION 0.3.1 LANGUAGES C CXX)
+project(Artempidor VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,7 +31,7 @@ endif()
 set(GRANULA_FORMATS "${GRANULA_DEFAULT_FORMATS}" CACHE STRING "Plugin formats to build")
 
 function(granula_add_plugin target)
-    cmake_parse_arguments(G "" "PRODUCT;CODE;SYNTH;AU_TYPE;DESC" "CATEGORIES" ${ARGN})
+    cmake_parse_arguments(G "" "PRODUCT;CODE;SYNTH;AU_TYPE;DESC" "CATEGORIES;SOURCES" ${ARGN})
     juce_add_plugin(${target}
         COMPANY_NAME "artempidor"
         BUNDLE_ID "com.artempidor.${target}"
@@ -41,7 +41,7 @@ function(granula_add_plugin target)
         PRODUCT_NAME "${G_PRODUCT}"
         DESCRIPTION "${G_DESC}"
         IS_SYNTH ${G_SYNTH}
-        NEEDS_MIDI_INPUT ${G_SYNTH}
+        NEEDS_MIDI_INPUT TRUE
         NEEDS_MIDI_OUTPUT FALSE
         IS_MIDI_EFFECT FALSE
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
@@ -49,10 +49,7 @@ function(granula_add_plugin target)
         VST3_CATEGORIES ${G_CATEGORIES}
         AU_MAIN_TYPE ${G_AU_TYPE})
 
-    target_sources(${target} PRIVATE
-        Source/PluginProcessor.cpp
-        Source/PluginEditor.cpp
-        Source/Parameters.cpp)
+    target_sources(${target} PRIVATE ${G_SOURCES})
 
     target_compile_definitions(${target} PUBLIC
         JUCE_WEB_BROWSER=0
@@ -70,6 +67,7 @@ function(granula_add_plugin target)
         PRIVATE
             juce::juce_audio_processors
             juce::juce_audio_formats
+            juce::juce_dsp
             juce::juce_gui_basics
         PUBLIC
             juce::juce_recommended_config_flags
@@ -81,7 +79,15 @@ endfunction()
 granula_add_plugin(Artempidor
     PRODUCT "artempidor" CODE Atp1 SYNTH TRUE AU_TYPE kAudioUnitType_MusicDevice
     DESC "Granular sampler and live granulator with cassette, delay and reverb"
-    CATEGORIES Instrument Sampler)
+    CATEGORIES Instrument Sampler
+    SOURCES Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/Parameters.cpp)
+
+# Interference: harmonic "sweetener" effect (snaps audio to a key).
+granula_add_plugin(Interference
+    PRODUCT "Interference" CODE Itf1 SYNTH FALSE AU_TYPE kAudioUnitType_MusicEffect
+    DESC "Harmonic sweetener: pulls any sound into key"
+    CATEGORIES Fx EQ Filter
+    SOURCES interference/Source/InterferenceProcessor.cpp interference/Source/InterferenceEditor.cpp)
 
 # ---------------------------------------------------------------------------
 # Offline test: renders audio through the DSP chain (no GUI, no host needed).
@@ -90,6 +96,11 @@ option(GRANULA_BUILD_TESTS "Build the offline DSP render test" OFF)
 if(GRANULA_BUILD_TESTS)
     add_executable(granula_render tests/render.cpp)
     target_include_directories(granula_render PRIVATE Source)
+
+    juce_add_console_app(interference_test PRODUCT_NAME interference_test)
+    target_sources(interference_test PRIVATE tests/interference_test.cpp)
+    target_compile_definitions(interference_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(interference_test PRIVATE juce::juce_dsp juce::juce_recommended_config_flags)
 endif()
 
 # Headless UI snapshots (render each editor to a PNG).
@@ -102,6 +113,11 @@ if(GRANULA_BUILD_SNAPSHOT)
         target_compile_definitions(${t}_snapshot PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
             $<TARGET_PROPERTY:${t},INTERFACE_COMPILE_DEFINITIONS>)
     endforeach()
+    add_executable(Interference_snapshot tests/interference_snapshot.cpp)
+    target_include_directories(Interference_snapshot PRIVATE interference/Source)
+    target_link_libraries(Interference_snapshot PRIVATE Interference juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics)
+    target_compile_definitions(Interference_snapshot PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        $<TARGET_PROPERTY:Interference,INTERFACE_COMPILE_DEFINITIONS>)
     add_executable(preset_test tests/preset_test.cpp)
     target_include_directories(preset_test PRIVATE Source)
     target_link_libraries(preset_test PRIVATE Artempidor juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics)

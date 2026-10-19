@@ -1,5 +1,9 @@
-ARTEMPIDOR — installation / установка
-=====================================
+ARTEMPIDOR + INTERFERENCE — installation / установка
+====================================================
+
+This archive has two plugins / в архиве два плагина:
+  artempidor    — granular instrument / гранулятор (MIDI track)
+  Interference  — harmonic sweetener effect / эффект: подтягивает звук в тональность
 
 macOS
   Easiest: double-click "install-mac.command".
@@ -9,18 +13,18 @@ macOS
   Если macOS не даёт открыть: правый клик -> Открыть -> Открыть.
 
   Manual / вручную:
-    artempidor.vst3      -> ~/Library/Audio/Plug-Ins/VST3/
-    artempidor.component -> ~/Library/Audio/Plug-Ins/Components/
+    *.vst3      -> ~/Library/Audio/Plug-Ins/VST3/
+    *.component -> ~/Library/Audio/Plug-Ins/Components/
     then in Terminal / затем в Терминале:
-    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/artempidor.vst3 ~/Library/Audio/Plug-Ins/Components/artempidor.component
+    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/artempidor.vst3 ~/Library/Audio/Plug-Ins/VST3/Interference.vst3 ~/Library/Audio/Plug-Ins/Components/artempidor.component ~/Library/Audio/Plug-Ins/Components/Interference.component
 
 WINDOWS
-  Copy "artempidor.vst3" to  C:\Program Files\Common Files\VST3\
+  Copy "artempidor.vst3" and "Interference.vst3" to  C:\Program Files\Common Files\VST3\
   and rescan plugins in your DAW.
-  Скопируйте "artempidor.vst3" в эту папку и пересканируйте плагины.
+  Скопируйте оба .vst3 в эту папку и пересканируйте плагины.
 
 LINUX
-  Copy artempidor.vst3 to ~/.vst3/
+  Copy both .vst3 to ~/.vst3/
 
 HOW TO USE / КАК ПОЛЬЗОВАТЬСЯ
   artempidor is an instrument: put it on a MIDI track.
@@ -43,3 +47,11 @@ PRESETS / ПРЕСЕТЫ
   Share a .artempidor file: the other person drags it onto the plugin.
   SAVE сохраняет ваш пресет. Чтобы поделиться — перетащите файл
   .artempidor на окно плагина.
+
+INTERFERENCE (effect / эффект)
+  Put it on any audio track. Pick the key (or click notes on the keyboard),
+  turn COLOR. Above 100% in-key notes ring into a tail.
+  HQ mode is more precise and enables SNAP (moves off-key notes into key).
+  MIDI KEY: send MIDI to the plugin and the key follows the chord you play.
+  Ставьте на любую аудиодорожку, выберите тональность (или кликайте ноты),
+  крутите COLOR. HQ точнее и включает SNAP. MIDI KEY — тональность по аккорду.

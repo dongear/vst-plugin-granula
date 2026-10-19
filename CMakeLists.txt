@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Artempidor VERSION 0.4.0 LANGUAGES C CXX)
+project(Artempidor VERSION 0.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -101,6 +101,11 @@ if(GRANULA_BUILD_TESTS)
     target_sources(interference_test PRIVATE tests/interference_test.cpp)
     target_compile_definitions(interference_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_link_libraries(interference_test PRIVATE juce::juce_dsp juce::juce_recommended_config_flags)
+
+    juce_add_console_app(tune_demo PRODUCT_NAME tune_demo)
+    target_sources(tune_demo PRIVATE tests/tune_demo.cpp)
+    target_compile_definitions(tune_demo PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(tune_demo PRIVATE juce::juce_dsp juce::juce_recommended_config_flags)
 endif()
 
 # Headless UI snapshots (render each editor to a PNG).

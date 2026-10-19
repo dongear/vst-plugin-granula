@@ -215,12 +215,74 @@ private:
     InterferenceProcessor& proc;
     uint16_t lastMask = 0xFFFF;
 };
+// Shows the sung note, how far off it is, and where TUNE is pulling it.
+class TuneMeter : public juce::Component, private juce::Timer
+{
+public:
+    explicit TuneMeter (InterferenceProcessor& p) : proc (p) { startTimerHz (30); }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto r = getLocalBounds().toFloat();
+        g.setColour (col::bg);
+        g.fillRoundedRectangle (r, 10.0f);
+        const bool on = proc.isTuneActive();
+        auto& t = proc.getTuner();
+        const float pitch = t.detectedPitch.load(), target = t.targetPitch.load(), shift = t.appliedShift.load();
+
+        auto text = r.reduced (14.0f, 8.0f);
+        auto nameArea = text.removeFromLeft (110.0f);
+        if (! on || pitch < 0.0f)
+        {
+            g.setColour (col::textDim);
+            g.setFont (juce::FontOptions (22.0f).withStyle ("Bold"));
+            g.drawText ("--", nameArea, juce::Justification::centredLeft);
+            g.setFont (juce::FontOptions (11.0f));
+            g.drawText (on ? "waiting for a voice..." : "TUNE is off", text, juce::Justification::centredLeft);
+            return;
+        }
+
+        const int tn = (int) std::lround (target);
+        g.setColour (col::text);
+        g.setFont (juce::FontOptions (28.0f).withStyle ("Bold"));
+        g.drawText (noteNames()[((tn % 12) + 12) % 12] + juce::String (tn / 12 - 1), nameArea, juce::Justification::centredLeft);
+
+        // cents scale: -100 .. +100 around the target note
+        const auto bar = text.withSizeKeepingCentre (text.getWidth(), 34.0f);
+        const float cx = bar.getCentreX();
+        g.setColour (col::track);
+        g.fillRoundedRectangle (bar.withSizeKeepingCentre (bar.getWidth(), 4.0f), 2.0f);
+        for (int c = -100; c <= 100; c += 25)
+        {
+            const float x = cx + (float) c / 100.0f * bar.getWidth() * 0.5f;
+            g.fillRect (x - 0.5f, bar.getCentreY() - (c == 0 ? 12.0f : 5.0f), 1.0f, c == 0 ? 24.0f : 10.0f);
+        }
+        const float inCents = juce::jlimit (-100.0f, 100.0f, (pitch - target) * 100.0f);
+        const float outCents = juce::jlimit (-100.0f, 100.0f, (pitch + shift - target) * 100.0f);
+        const float xi = cx + inCents / 100.0f * bar.getWidth() * 0.5f;
+        const float xo = cx + outCents / 100.0f * bar.getWidth() * 0.5f;
+        g.setColour (col::textDim);
+        g.drawEllipse (xi - 6.0f, bar.getCentreY() - 6.0f, 12.0f, 12.0f, 1.5f);
+        g.setColour (col::text);
+        g.fillEllipse (xo - 5.0f, bar.getCentreY() - 5.0f, 10.0f, 10.0f);
+
+        g.setFont (juce::FontOptions (10.5f).withStyle ("Bold"));
+        g.setColour (col::textDim);
+        g.drawText ("IN " + juce::String (juce::roundToInt (inCents)) + " ct", bar.withTrimmedTop (24.0f).withHeight (14.0f).translated (0, 12), juce::Justification::centredLeft);
+        g.setColour (col::text);
+        g.drawText ("OUT " + juce::String (juce::roundToInt (outCents)) + " ct", bar.withTrimmedTop (24.0f).withHeight (14.0f).translated (0, 12), juce::Justification::centredRight);
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+    InterferenceProcessor& proc;
+};
 } // namespace interference::ui
 
 class InterferenceView : public juce::Component, private juce::Timer
 {
 public:
-    static constexpr int kWidth = 1000, kHeight = 620;
+    static constexpr int kWidth = 1000, kHeight = 770;
     explicit InterferenceView (InterferenceProcessor&);
     ~InterferenceView() override;
     void paint (juce::Graphics&) override;
@@ -252,7 +314,10 @@ private:
 
     using Knob = granula::ui::Knob;
     std::unique_ptr<Knob> color, snap, focus, gate, trans, low, high, mix, out;
-    juce::Rectangle<int> spectrumArea, keyArea, controlArea;
+    std::unique_ptr<Knob> tSpeed, tHumanize, tAmount, tFormant;
+    std::unique_ptr<granula::ui::PowerButton> tuneOn;
+    interference::ui::TuneMeter tuneMeter;
+    juce::Rectangle<int> spectrumArea, keyArea, tuneArea, controlArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InterferenceView)
 };

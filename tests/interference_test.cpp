@@ -4,6 +4,7 @@
 //  3. SNAP moves an out-of-key tone into key (spectral engine)
 //  4. colour > 100% leaves an in-key tail; no NaNs anywhere
 #include "../interference/Source/HarmonicDsp.h"
+#include "../interference/Source/AutoTune.h"
 #include <cstdio>
 
 using namespace interference;
@@ -121,6 +122,83 @@ int main()
         std::printf ("  %s colour 200%%: tail rms %.1f dBFS, peak %.1f dBFS\n", mode ? "spectral" : "bank    ", db (tail), db (peak));
         check (finite && peak < 4.0f, mode ? "spectral: stable with colour 200% + gate" : "bank: stable with colour 200% + gate");
         check (db (tail) > -70.0, mode ? "spectral: colour > 100% leaves a tail" : "bank: colour > 100% leaves a tail");
+    }
+
+    // 5. Auto-tune
+    {
+        auto saw = [&] (double f, double vibCents)
+        {
+            std::vector<float> v ((size_t) len);
+            double ph = 0;
+            for (int i = 0; i < len; ++i)
+            {
+                const double fi = f * std::pow (2.0, vibCents / 1200.0 * std::sin (2.0 * kPi * 5.0 * i / sr));
+                ph += fi / sr;
+                double s = 0;
+                for (int h = 1; h <= 12; ++h) s += std::sin (2.0 * kPi * h * ph) / h;
+                v[(size_t) i] = (float) (0.25 * s);
+            }
+            return v;
+        };
+        auto tune = [&] (const std::vector<float>& x, PitchCorrector::Params q, int& latOut)
+        {
+            PitchCorrector pc; pc.prepare (sr);
+            std::vector<float> l = x, r = x;
+            for (size_t pos = 0; pos < x.size(); pos += 256)
+            {
+                const int n = (int) std::min<size_t> (256, x.size() - pos);
+                pc.process (l.data() + pos, r.data() + pos, n, q);
+            }
+            latOut = pc.getLatency();
+            return l;
+        };
+        struct Case { double f, expect, wrong; float speed, amount; const char* name; };
+        const Case cases[] = {
+            { 452.0, 440.0, 452.0, 0.0f, 1.0f, "tune: 452 Hz -> A4 440 (speed 0)" },
+            { 202.0, 196.0, 202.0, 0.0f, 1.0f, "tune: 202 Hz -> G3 196 (speed 0)" },
+            { 452.0, 440.0, 452.0, 80.0f, 1.0f, "tune: 452 Hz -> 440 with 80 ms speed" },
+            { 452.0, 452.0, 440.0, 0.0f, 0.0f, "tune: amount 0 leaves pitch alone" },
+        };
+        for (const auto& c : cases)
+        {
+            PitchCorrector::Params q; q.mask = 0x0AB5; q.speedMs = c.speed; q.amount = c.amount;
+            int lat = 0;
+            auto x = saw (c.f, 0.0);
+            auto y = tune (x, q, lat);
+            const double e = goertzel (y, at, an, c.expect, sr), w = goertzel (y, at, an, c.wrong, sr);
+            const double ein = goertzel (x, at, an, c.f, sr);
+            std::printf ("  %-40s at %.0f: %+.1f dB, at %.0f: %+.1f dB\n", c.name, c.expect, db (e / ein), c.wrong, db (w / ein));
+            check (e > w * 3.0 && db (e / ein) > -6.0, c.name);
+        }
+        // unvoiced noise: unity-ish level, aligned at the reported latency
+        {
+            std::vector<float> x ((size_t) len);
+            granula::Rng rng (11);
+            for (auto& v : x) v = 0.2f * rng.bi();
+            PitchCorrector::Params q;
+            int lat = 0;
+            auto y = tune (x, q, lat);
+            double ex = 0, ey = 0, best = -1; int bestLag = 0; bool finite = true;
+            for (int i = 20000; i < 80000; ++i) { ex += (double) x[(size_t) i] * x[(size_t) i]; ey += (double) y[(size_t) i] * y[(size_t) i]; if (! std::isfinite (y[(size_t) i])) finite = false; }
+            for (int lag = lat - 200; lag <= lat + 200; ++lag)
+            {
+                double c = 0;
+                for (int i = 30000; i < 60000; ++i) c += (double) y[(size_t) i] * x[(size_t) (i - lag)];
+                if (c > best) { best = c; bestLag = lag; }
+            }
+            std::printf ("  tune noise: level %+.1f dB, best lag %d (latency %d)\n", db (std::sqrt (ey / ex)), bestLag, lat);
+            check (finite && std::abs (db (std::sqrt (ey / ex))) < 3.0, "tune: noise passes at ~unity level");
+            check (std::abs (bestLag - lat) <= 2, "tune: output aligned with reported latency");
+        }
+        // vibrato voice: still corrected on average, no blow-ups
+        {
+            PitchCorrector::Params q; q.mask = 0x0AB5; q.speedMs = 0.0f; q.formant = 3.0f;
+            int lat = 0;
+            auto y = tune (saw (452.0, 30.0), q, lat);
+            float pk = 0; bool finite = true;
+            for (float v : y) { pk = std::max (pk, std::abs (v)); if (! std::isfinite (v)) finite = false; }
+            check (finite && pk < 1.5f, "tune: stable with vibrato + formant shift");
+        }
     }
 
     std::printf (fails ? "\n%d FAILED\n" : "\nALL PASSED\n", fails);

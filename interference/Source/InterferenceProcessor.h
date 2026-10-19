@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "HarmonicDsp.h"
+#include "AutoTune.h"
 
 namespace interference::ids
 {
@@ -18,6 +19,11 @@ inline constexpr const char* low     = "low";
 inline constexpr const char* high    = "high";
 inline constexpr const char* mix     = "mix";
 inline constexpr const char* out     = "output";
+inline constexpr const char* tuneOn       = "tune_on";
+inline constexpr const char* tuneSpeed    = "tune_speed";
+inline constexpr const char* tuneHumanize = "tune_humanize";
+inline constexpr const char* tuneAmount   = "tune_amount";
+inline constexpr const char* tuneFormant  = "tune_formant";
 inline const char* note (int pc)
 {
     static const char* n[12] = { "n0", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "n10", "n11" };
@@ -103,6 +109,8 @@ public:
     void setScaleFromUI (int root, int scaleIndex);
     void toggleNoteFromUI (int pitchClass);
     juce::String describeKey() const;
+    interference::PitchCorrector& getTuner() { return tuner; }
+    bool isTuneActive() const { return tuneActive; }
 
     // ---- user presets (Documents/artempidor/Interference Presets/*.interference)
     juce::File getUserPresetFolder() const;
@@ -122,12 +130,13 @@ private:
     float get (const char* id) const { return apvts.getRawParameterValue (id)->load (std::memory_order_relaxed); }
     void setParam (const char* id, float plainValue);
     uint16_t computeScaleMask() const;
-    void configureLatency (bool hq);
+    void configureLatency();
 
     interference::FilterBank bank;
     interference::SpectralEngine spectral;
-    bool hqActive = false;
-    int latency = 0;
+    interference::PitchCorrector tuner;
+    bool hqActive = false, tuneActive = false;
+    int latency = 0; // spectral part only (dry path delay)
 
     juce::AudioBuffer<float> dryDelay;   // circular, holds `latency` samples
     int dryPos = 0;

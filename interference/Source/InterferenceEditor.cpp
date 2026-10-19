@@ -8,7 +8,7 @@ namespace
 constexpr int kUserBase = 1000, kActionSave = 9001, kActionFolder = 9002, kActionDelete = 9003;
 }
 
-InterferenceView::InterferenceView (InterferenceProcessor& p) : proc (p), spectrum (p), keyboard (p)
+InterferenceView::InterferenceView (InterferenceProcessor& p) : proc (p), spectrum (p), keyboard (p), tuneMeter (p)
 {
     setLookAndFeel (&lnf);
     auto& s = proc.apvts;
@@ -84,6 +84,18 @@ InterferenceView::InterferenceView (InterferenceProcessor& p) : proc (p), spectr
     gate->slider.setTooltip ("Spectral gate: removes the quiet in-between material for a tighter sound");
     trans->slider.setTooltip ("Lets attacks through unprocessed");
 
+    // ---- tune
+    tuneOn = std::make_unique<granula::ui::PowerButton> (s, ids::tuneOn, col::text);
+    addAndMakeVisible (*tuneOn);
+    knob (tSpeed, ids::tuneSpeed, "Speed");
+    knob (tHumanize, ids::tuneHumanize, "Humanize");
+    knob (tAmount, ids::tuneAmount, "Amount");
+    knob (tFormant, ids::tuneFormant, "Formant", true);
+    tSpeed->slider.setTooltip ("How fast notes snap to the key. 0 = hard robotic tune");
+    tHumanize->slider.setTooltip ("Gentler correction on long notes, keeps natural vibrato");
+    tFormant->slider.setTooltip ("Voice character: lower = bigger, higher = smaller");
+    addAndMakeVisible (tuneMeter);
+
     modeInfo.setFont (juce::FontOptions (12.0f));
     modeInfo.setColour (juce::Label::textColourId, col::textDim);
     modeInfo.setJustificationType (juce::Justification::topLeft);
@@ -105,6 +117,8 @@ void InterferenceView::timerCallback()
     zeroLat.setToggleState (! isHq, juce::dontSendNotification);
     hq.setToggleState (isHq, juce::dontSendNotification);
     snap->setEnabledLook (isHq);
+    const bool tOn = proc.apvts.getRawParameterValue (ids::tuneOn)->load() > 0.5f;
+    for (auto* k : { tSpeed.get(), tHumanize.get(), tAmount.get(), tFormant.get() }) k->setAlpha (tOn ? 1.0f : 0.45f);
 
     const int root = (int) proc.apvts.getRawParameterValue (ids::root)->load();
     const int sc = (int) proc.apvts.getRawParameterValue (ids::scale)->load();
@@ -113,9 +127,9 @@ void InterferenceView::timerCallback()
     keyLabel.setText (proc.describeKey(), juce::dontSendNotification);
 
     const double sr = proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0;
-    modeInfo.setText (isHq ? "HQ  -  spectral engine\nlatency " + juce::String (juce::roundToInt (proc.getLatencySamples() * 1000.0 / sr))
-                                 + " ms (compensated by your DAW)\nSNAP active"
-                           : "ZERO LATENCY  -  filter bank\nno latency, play live\nSNAP needs HQ",
+    const int latMs = juce::roundToInt (proc.getLatencySamples() * 1000.0 / sr);
+    modeInfo.setText ((isHq ? juce::String ("HQ  -  spectral engine\nSNAP active") : juce::String ("ZERO LATENCY  -  filter bank\nSNAP needs HQ"))
+                          + "\nlatency " + juce::String (latMs) + " ms" + (latMs > 0 ? " (compensated by your DAW)" : ""),
                       juce::dontSendNotification);
 }
 
@@ -238,6 +252,7 @@ void InterferenceView::paint (juce::Graphics& g)
 
     panel (g, spectrumArea, {});
     panel (g, keyArea, "KEY");
+    panel (g, tuneArea, "TUNE");
     panel (g, controlArea, "SOUND");
 }
 
@@ -266,7 +281,16 @@ void InterferenceView::resized()
     midiToggle->setBounds (scaleBox.getRight() + 12, keyArea.getY() + 40, 100, 28);
     keyLabel.setBounds (midiToggle->getRight() + 20, keyArea.getY() + 34, keyArea.getRight() - midiToggle->getRight() - 36, 40);
 
-    controlArea = { 16, keyArea.getBottom() + 12, kWidth - 32, kHeight - keyArea.getBottom() - 26 };
+    tuneArea = { 16, keyArea.getBottom() + 12, kWidth - 32, 124 };
+    tuneOn->setBounds (tuneArea.getX() + 84, tuneArea.getY() + 4, 28, 28);
+    {
+        const int cell = 96, y = tuneArea.getY() + 26;
+        Knob* tk[] = { tSpeed.get(), tHumanize.get(), tAmount.get(), tFormant.get() };
+        for (int i = 0; i < 4; ++i) tk[i]->setBounds (tuneArea.getX() + 24 + i * cell, y, cell, 92);
+        tuneMeter.setBounds (tuneArea.getX() + 24 + 4 * cell + 24, tuneArea.getY() + 20, tuneArea.getRight() - (tuneArea.getX() + 24 + 4 * cell + 24) - 16, 92);
+    }
+
+    controlArea = { 16, tuneArea.getBottom() + 12, kWidth - 32, kHeight - tuneArea.getBottom() - 26 };
     const int cy = controlArea.getY() + 30;
     color->setBounds (controlArea.getX() + 24, cy, 170, controlArea.getHeight() - 40);
     color->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 18);

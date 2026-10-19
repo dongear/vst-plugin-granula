@@ -9,6 +9,7 @@ int main (int argc, char** argv)
     const juce::File out (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "interference.png"));
     const int preset = argc > 2 ? juce::String (argv[2]).getIntValue() : 0;
     const float scale = argc > 3 ? juce::String (argv[3]).getFloatValue() : 1.5f;
+    const bool voice = argc > 4 && juce::String (argv[4]) == "voice";
 
     InterferenceProcessor proc;
     proc.setPlayConfigDetails (2, 2, 48000.0, 512);
@@ -20,6 +21,7 @@ int main (int argc, char** argv)
     juce::AudioBuffer<float> buf (2, 512);
     juce::MidiBuffer midi;
     granula::Rng rng (3);
+    double vph = 0.0;
     const double fs[] = { 130.81, 196.0, 261.63, 311.13, 329.63, 369.99, 523.25, 587.33, 739.99, 1046.5, 1244.5 };
     for (int b = 0; b < 300; ++b)
     {
@@ -27,7 +29,14 @@ int main (int argc, char** argv)
         {
             const double t = (b * 512 + i) / 48000.0;
             double v = 0.02 * rng.bi();
-            for (double f : fs) v += 0.05 * std::sin (2.0 * juce::MathConstants<double>::pi * f * t);
+            if (voice)
+            {
+                const double f = 452.0 * std::pow (2.0, 0.2 / 12.0 * std::sin (2.0 * juce::MathConstants<double>::pi * 5.0 * t));
+                vph += f / 48000.0;
+                for (int h = 1; h <= 10; ++h) v += 0.06 * std::sin (2.0 * juce::MathConstants<double>::pi * h * vph) / h;
+            }
+            else
+                for (double f : fs) v += 0.05 * std::sin (2.0 * juce::MathConstants<double>::pi * f * t);
             buf.setSample (0, i, (float) v); buf.setSample (1, i, (float) v);
         }
         proc.processBlock (buf, midi);

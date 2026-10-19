@@ -54,6 +54,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout layout()
     l.add (std::make_unique<APF> (pid (ids::mix), "Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct()));
     l.add (std::make_unique<APF> (pid (ids::out), "Output", juce::NormalisableRange<float> (-24.0f, 12.0f, 0.1f), 0.0f,
                                   Attr().withStringFromValueFunction ([] (float v, int) { return (v > 0.05f ? "+" : "") + juce::String (v, 1) + " dB"; })));
+    l.add (std::make_unique<APB> (pid (ids::tuneOn), "Tune On", false));
+    l.add (std::make_unique<APF> (pid (ids::tuneSpeed), "Retune Speed", skew (0.0f, 400.0f, 40.0f), 20.0f,
+                                  Attr().withStringFromValueFunction ([] (float v, int) { return v < 0.5f ? juce::String ("Instant") : juce::String (juce::roundToInt (v)) + " ms"; })));
+    l.add (std::make_unique<APF> (pid (ids::tuneHumanize), "Humanize", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct()));
+    l.add (std::make_unique<APF> (pid (ids::tuneAmount), "Tune Amount", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct()));
+    l.add (std::make_unique<APF> (pid (ids::tuneFormant), "Formant", juce::NormalisableRange<float> (-7.0f, 7.0f, 0.01f), 0.0f,
+                                  Attr().withStringFromValueFunction ([] (float v, int) { return (v > 0.005f ? "+" : "") + juce::String (v, 1) + " st"; })));
     return l;
 }
 
@@ -72,6 +79,10 @@ const std::vector<Preset>& factory()
         { "Chord Follow (MIDI)", { { midi, 1 }, { color, 1.1f }, { focus, 0.6f } } },
         { "Fifths Glow", { { scale, 12 }, { color, 1.4f }, { focus, 0.6f } } },
         { "Subtle Polish", { { color, 0.45f }, { focus, 0.35f }, { trans, 0.5f } } },
+        { "Tune - Hard (Robot)", { { tuneOn, 1 }, { tuneSpeed, 0.0f }, { color, 0.0f }, { trans, 0.0f } } },
+        { "Tune - Natural", { { tuneOn, 1 }, { tuneSpeed, 45.0f }, { tuneHumanize, 0.5f }, { color, 0.3f }, { focus, 0.4f }, { trans, 0.4f } } },
+        { "Tune - Robot Choir (HQ)", { { tuneOn, 1 }, { tuneSpeed, 0.0f }, { quality, 1 }, { color, 1.7f }, { snap, 0.5f }, { focus, 0.7f } } },
+        { "Tune - Formant Up", { { tuneOn, 1 }, { tuneSpeed, 10.0f }, { tuneFormant, 4.0f }, { color, 0.4f } } },
     };
     return p;
 }
@@ -97,29 +108,33 @@ void InterferenceProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     sr = sampleRate;
     bank.prepare (sr);
     spectral.prepare (sr);
+    tuner.prepare (sr);
     dry.setSize (2, std::max (1, samplesPerBlock), false, true, false);
     colorW.prepare (sr, 30.0f); colorW.snap (std::min (1.0f, get (ids::color)));
     mixSm.prepare (sr, 20.0f); mixSm.snap (get (ids::mix));
     outSm.prepare (sr, 20.0f); outSm.snap (granula::dbToGain (get (ids::out)));
     hqActive = get (ids::quality) > 0.5f;
-    configureLatency (hqActive);
+    tuneActive = get (ids::tuneOn) > 0.5f;
+    configureLatency();
 }
 
-void InterferenceProcessor::configureLatency (bool hq)
+void InterferenceProcessor::configureLatency()
 {
-    latency = hq ? spectral.getLatency() : 0;
+    latency = hqActive ? spectral.getLatency() : 0;
     dryDelay.setSize (2, std::max (1, latency), false, true, false);
     dryDelay.clear();
     dryPos = 0;
     spectral.reset();
     bank.reset();
-    setLatencySamples (latency);
+    tuner.reset();
+    setLatencySamples (latency + (tuneActive ? tuner.getLatency() : 0));
 }
 
 void InterferenceProcessor::reset()
 {
     bank.reset();
     spectral.reset();
+    tuner.reset();
     dryDelay.clear();
     dryPos = 0;
     fastEnv = slowEnv = transHold = 0.0f;
@@ -146,7 +161,8 @@ void InterferenceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
     // ---- quality / latency
     const bool hq = get (ids::quality) > 0.5f;
-    if (hq != hqActive) { hqActive = hq; configureLatency (hq); }
+    const bool tuneOn = get (ids::tuneOn) > 0.5f;
+    if (hq != hqActive || tuneOn != tuneActive) { hqActive = hq; tuneActive = tuneOn; configureLatency(); }
 
     // ---- MIDI key follow: the last chord played defines the key
     const bool midiOn = get (ids::midi) > 0.5f;
@@ -188,6 +204,18 @@ void InterferenceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
     float* L = buffer.getWritePointer (0);
     float* R = buffer.getWritePointer (1);
+
+    // ---- TUNE: pitch correction runs first; everything after treats the tuned voice as "dry"
+    if (tuneActive)
+    {
+        PitchCorrector::Params tp;
+        tp.mask = mask;
+        tp.speedMs = get (ids::tuneSpeed);
+        tp.humanize = get (ids::tuneHumanize);
+        tp.amount = get (ids::tuneAmount);
+        tp.formant = get (ids::tuneFormant);
+        tuner.process (L, R, n, tp);
+    }
 
     if (dry.getNumSamples() < n) dry.setSize (2, n, false, false, true);
     dry.copyFrom (0, 0, buffer, 0, 0, n);

@@ -54,6 +54,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout layout()
     l.add (std::make_unique<APF> (pid (ids::mix), "Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct()));
     l.add (std::make_unique<APF> (pid (ids::out), "Output", juce::NormalisableRange<float> (-24.0f, 12.0f, 0.1f), 0.0f,
                                   Attr().withStringFromValueFunction ([] (float v, int) { return (v > 0.05f ? "+" : "") + juce::String (v, 1) + " dB"; })));
+    l.add (std::make_unique<APB> (pid (ids::soundOn), "Sound On", true));
     l.add (std::make_unique<APB> (pid (ids::tuneOn), "Tune On", false));
     l.add (std::make_unique<APF> (pid (ids::tuneSpeed), "Retune Speed", skew (0.0f, 400.0f, 40.0f), 20.0f,
                                   Attr().withStringFromValueFunction ([] (float v, int) { return v < 0.5f ? juce::String ("Instant") : juce::String (juce::roundToInt (v)) + " ms"; })));
@@ -79,8 +80,8 @@ const std::vector<Preset>& factory()
         { "Chord Follow (MIDI)", { { midi, 1 }, { color, 1.1f }, { focus, 0.6f } } },
         { "Fifths Glow", { { scale, 12 }, { color, 1.4f }, { focus, 0.6f } } },
         { "Subtle Polish", { { color, 0.45f }, { focus, 0.35f }, { trans, 0.5f } } },
-        { "Tune - Hard (Robot)", { { tuneOn, 1 }, { tuneSpeed, 0.0f }, { color, 0.0f }, { trans, 0.0f } } },
-        { "Tune - Natural", { { tuneOn, 1 }, { tuneSpeed, 45.0f }, { tuneHumanize, 0.5f }, { color, 0.3f }, { focus, 0.4f }, { trans, 0.4f } } },
+        { "Tune - Hard (Robot)", { { tuneOn, 1 }, { tuneSpeed, 0.0f }, { soundOn, 0 } } },
+        { "Tune - Natural", { { tuneOn, 1 }, { tuneSpeed, 45.0f }, { tuneHumanize, 0.5f }, { soundOn, 0 } } },
         { "Tune - Robot Choir (HQ)", { { tuneOn, 1 }, { tuneSpeed, 0.0f }, { quality, 1 }, { color, 1.7f }, { snap, 0.5f }, { focus, 0.7f } } },
         { "Tune - Formant Up", { { tuneOn, 1 }, { tuneSpeed, 10.0f }, { tuneFormant, 4.0f }, { color, 0.4f } } },
     };
@@ -113,7 +114,8 @@ void InterferenceProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     colorW.prepare (sr, 30.0f); colorW.snap (std::min (1.0f, get (ids::color)));
     mixSm.prepare (sr, 20.0f); mixSm.snap (get (ids::mix));
     outSm.prepare (sr, 20.0f); outSm.snap (granula::dbToGain (get (ids::out)));
-    hqActive = get (ids::quality) > 0.5f;
+    soundActive = get (ids::soundOn) > 0.5f;
+    hqActive = soundActive && get (ids::quality) > 0.5f;
     tuneActive = get (ids::tuneOn) > 0.5f;
     configureLatency();
 }
@@ -160,9 +162,12 @@ void InterferenceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     if (getTotalNumInputChannels() == 1) buffer.copyFrom (1, 0, buffer, 0, 0, n);
 
     // ---- quality / latency
-    const bool hq = get (ids::quality) > 0.5f;
+    const bool soundOn = get (ids::soundOn) > 0.5f;
+    const bool hq = soundOn && get (ids::quality) > 0.5f;   // HQ latency only matters while SOUND is on
     const bool tuneOn = get (ids::tuneOn) > 0.5f;
     if (hq != hqActive || tuneOn != tuneActive) { hqActive = hq; tuneActive = tuneOn; configureLatency(); }
+    if (soundOn != soundActive && ! soundOn) bank.reset(); // fresh start next time it is switched on
+    soundActive = soundOn;
 
     // ---- MIDI key follow: the last chord played defines the key
     const bool midiOn = get (ids::midi) > 0.5f;
@@ -215,6 +220,29 @@ void InterferenceProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         tp.amount = get (ids::tuneAmount);
         tp.formant = get (ids::tuneFormant);
         tuner.process (L, R, n, tp);
+    }
+
+    if (! soundActive)
+    {
+        // SOUND off: only TUNE (if on) and the output level apply.
+        outSm.target = granula::dbToGain (get (ids::out));
+        displayFifo.prepareToWrite (n, displayWriteStart1, displayWriteSize1, displayWriteStart2, displayWriteSize2);
+        auto pushDisp = [&] (std::vector<float>& dst)
+        {
+            for (int i = 0; i < displayWriteSize1; ++i) dst[(size_t) (displayWriteStart1 + i)] = 0.5f * (L[i] + R[i]);
+            for (int i = 0; i < displayWriteSize2; ++i)
+                dst[(size_t) (displayWriteStart2 + i)] = 0.5f * (L[displayWriteSize1 + i] + R[displayWriteSize1 + i]);
+        };
+        pushDisp (displayIn);
+        for (int i = 0; i < n; ++i)
+        {
+            const float g = outSm.next();
+            L[i] = std::isfinite (L[i]) ? std::clamp (L[i] * g, -2.0f, 2.0f) : 0.0f;
+            R[i] = std::isfinite (R[i]) ? std::clamp (R[i] * g, -2.0f, 2.0f) : 0.0f;
+        }
+        pushDisp (displayOut);
+        displayFifo.finishedWrite (displayWriteSize1 + displayWriteSize2);
+        return;
     }
 
     if (dry.getNumSamples() < n) dry.setSize (2, n, false, false, true);

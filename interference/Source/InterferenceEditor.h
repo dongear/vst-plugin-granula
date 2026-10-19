@@ -315,7 +315,7 @@ private:
     using Knob = granula::ui::Knob;
     std::unique_ptr<Knob> color, snap, focus, gate, trans, low, high, mix, out;
     std::unique_ptr<Knob> tSpeed, tHumanize, tAmount, tFormant;
-    std::unique_ptr<granula::ui::PowerButton> tuneOn;
+    std::unique_ptr<granula::ui::PowerButton> tuneOn, soundOn;
     interference::ui::TuneMeter tuneMeter;
     juce::Rectangle<int> spectrumArea, keyArea, tuneArea, controlArea;
 

@@ -19,6 +19,7 @@ inline constexpr const char* low     = "low";
 inline constexpr const char* high    = "high";
 inline constexpr const char* mix     = "mix";
 inline constexpr const char* out     = "output";
+inline constexpr const char* soundOn      = "sound_on";
 inline constexpr const char* tuneOn       = "tune_on";
 inline constexpr const char* tuneSpeed    = "tune_speed";
 inline constexpr const char* tuneHumanize = "tune_humanize";
@@ -111,6 +112,7 @@ public:
     juce::String describeKey() const;
     interference::PitchCorrector& getTuner() { return tuner; }
     bool isTuneActive() const { return tuneActive; }
+    bool isSoundActive() const { return soundActive; }
 
     // ---- user presets (Documents/artempidor/Interference Presets/*.interference)
     juce::File getUserPresetFolder() const;
@@ -135,7 +137,7 @@ private:
     interference::FilterBank bank;
     interference::SpectralEngine spectral;
     interference::PitchCorrector tuner;
-    bool hqActive = false, tuneActive = false;
+    bool hqActive = false, tuneActive = false, soundActive = true;
     int latency = 0; // spectral part only (dry path delay)
 
     juce::AudioBuffer<float> dryDelay;   // circular, holds `latency` samples

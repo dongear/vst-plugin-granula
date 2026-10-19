@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Artempidor VERSION 0.5.0 LANGUAGES C CXX)
+project(Artempidor VERSION 0.5.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -122,6 +122,11 @@ if(GRANULA_BUILD_SNAPSHOT)
     target_include_directories(Interference_snapshot PRIVATE interference/Source)
     target_link_libraries(Interference_snapshot PRIVATE Interference juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics)
     target_compile_definitions(Interference_snapshot PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        $<TARGET_PROPERTY:Interference,INTERFACE_COMPILE_DEFINITIONS>)
+    add_executable(interference_bypass_test tests/interference_bypass_test.cpp)
+    target_include_directories(interference_bypass_test PRIVATE interference/Source)
+    target_link_libraries(interference_bypass_test PRIVATE Interference juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics)
+    target_compile_definitions(interference_bypass_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
         $<TARGET_PROPERTY:Interference,INTERFACE_COMPILE_DEFINITIONS>)
     add_executable(preset_test tests/preset_test.cpp)
     target_include_directories(preset_test PRIVATE Source)

@@ -86,7 +86,11 @@ InterferenceView::InterferenceView (InterferenceProcessor& p) : proc (p), spectr
 
     // ---- tune
     tuneOn = std::make_unique<granula::ui::PowerButton> (s, ids::tuneOn, col::text);
+    tuneOn->setTooltip ("Turn the auto-tune on / off");
     addAndMakeVisible (*tuneOn);
+    soundOn = std::make_unique<granula::ui::PowerButton> (s, ids::soundOn, col::text);
+    soundOn->setTooltip ("Turn the harmonic colouring (Chroma part) on / off");
+    addAndMakeVisible (*soundOn);
     knob (tSpeed, ids::tuneSpeed, "Speed");
     knob (tHumanize, ids::tuneHumanize, "Humanize");
     knob (tAmount, ids::tuneAmount, "Amount");
@@ -116,7 +120,12 @@ void InterferenceView::timerCallback()
     const bool isHq = proc.apvts.getRawParameterValue (ids::quality)->load() > 0.5f;
     zeroLat.setToggleState (! isHq, juce::dontSendNotification);
     hq.setToggleState (isHq, juce::dontSendNotification);
-    snap->setEnabledLook (isHq);
+    const bool sOn = proc.apvts.getRawParameterValue (ids::soundOn)->load() > 0.5f;
+    snap->setEnabledLook (isHq && sOn);
+    for (auto* k : { color.get(), focus.get(), gate.get(), trans.get(), low.get(), high.get(), mix.get() }) k->setAlpha (sOn ? 1.0f : 0.45f);
+    snap->setAlpha (sOn ? 1.0f : 0.45f);
+    zeroLat.setAlpha (sOn ? 1.0f : 0.45f);
+    hq.setAlpha (sOn ? 1.0f : 0.45f);
     const bool tOn = proc.apvts.getRawParameterValue (ids::tuneOn)->load() > 0.5f;
     for (auto* k : { tSpeed.get(), tHumanize.get(), tAmount.get(), tFormant.get() }) k->setAlpha (tOn ? 1.0f : 0.45f);
 
@@ -128,7 +137,8 @@ void InterferenceView::timerCallback()
 
     const double sr = proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0;
     const int latMs = juce::roundToInt (proc.getLatencySamples() * 1000.0 / sr);
-    modeInfo.setText ((isHq ? juce::String ("HQ  -  spectral engine\nSNAP active") : juce::String ("ZERO LATENCY  -  filter bank\nSNAP needs HQ"))
+    modeInfo.setText ((! sOn ? juce::String ("SOUND is off\nonly TUNE is working")
+                       : isHq ? juce::String ("HQ  -  spectral engine\nSNAP active") : juce::String ("ZERO LATENCY  -  filter bank\nSNAP needs HQ"))
                           + "\nlatency " + juce::String (latMs) + " ms" + (latMs > 0 ? " (compensated by your DAW)" : ""),
                       juce::dontSendNotification);
 }
@@ -291,6 +301,7 @@ void InterferenceView::resized()
     }
 
     controlArea = { 16, tuneArea.getBottom() + 12, kWidth - 32, kHeight - tuneArea.getBottom() - 26 };
+    soundOn->setBounds (controlArea.getX() + 92, controlArea.getY() + 4, 28, 28);
     const int cy = controlArea.getY() + 30;
     color->setBounds (controlArea.getX() + 24, cy, 170, controlArea.getHeight() - 40);
     color->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 18);

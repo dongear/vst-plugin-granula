@@ -53,7 +53,9 @@ INTERFERENCE (effect / эффект)
   turn COLOR. Above 100% in-key notes ring into a tail.
   HQ mode is more precise and enables SNAP (moves off-key notes into key).
   MIDI KEY: send MIDI to the plugin and the key follows the chord you play.
+  Power buttons on SOUND and TUNE: use either part alone or both together.
   TUNE: auto-tune for vocals. SPEED 0 = hard robot tune, 40-100 ms = natural.
   Ставьте на любую аудиодорожку, выберите тональность (или кликайте ноты),
   крутите COLOR. HQ точнее и включает SNAP. MIDI KEY — тональность по аккорду.
+  Кнопки питания у SOUND и TUNE: можно использовать любую часть отдельно.
   TUNE — автотюн для вокала: SPEED 0 = жёсткий робот, 40-100 мс = естественно.

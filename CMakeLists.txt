@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Artempidor VERSION 0.5.1 LANGUAGES C CXX)
+project(Artempidor VERSION 0.6.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -89,11 +89,29 @@ granula_add_plugin(Interference
     CATEGORIES Fx EQ Filter
     SOURCES interference/Source/InterferenceProcessor.cpp interference/Source/InterferenceEditor.cpp)
 
+# STONE: modal percussion synth with trails.
+granula_add_plugin(Stone
+    PRODUCT "STONE" CODE Stn1 SYNTH TRUE AU_TYPE kAudioUnitType_MusicDevice
+    DESC "Organic modal percussion: stone, glass, wood, metal, water"
+    CATEGORIES Instrument Drum
+    SOURCES stone/Source/StoneProcessor.cpp stone/Source/StoneEditor.cpp)
+
+# GARDEN: organic playable synth grown from a seeded plant.
+granula_add_plugin(Garden
+    PRODUCT "GARDEN" CODE Gdn1 SYNTH TRUE AU_TYPE kAudioUnitType_MusicDevice
+    DESC "Organic synth: grow a plant, play its sound"
+    CATEGORIES Instrument Synth
+    SOURCES garden/Source/GardenProcessor.cpp garden/Source/GardenEditor.cpp)
+
 # ---------------------------------------------------------------------------
 # Offline test: renders audio through the DSP chain (no GUI, no host needed).
 # ---------------------------------------------------------------------------
 option(GRANULA_BUILD_TESTS "Build the offline DSP render test" OFF)
 if(GRANULA_BUILD_TESTS)
+    add_executable(garden_test tests/garden_test.cpp)
+    target_include_directories(garden_test PRIVATE Source)
+    add_executable(stone_test tests/stone_test.cpp)
+    target_include_directories(stone_test PRIVATE Source)
     add_executable(granula_render tests/render.cpp)
     target_include_directories(granula_render PRIVATE Source)
 
@@ -128,6 +146,16 @@ if(GRANULA_BUILD_SNAPSHOT)
     target_link_libraries(interference_bypass_test PRIVATE Interference juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics)
     target_compile_definitions(interference_bypass_test PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
         $<TARGET_PROPERTY:Interference,INTERFACE_COMPILE_DEFINITIONS>)
+    add_executable(Stone_snapshot tests/stone_snapshot.cpp)
+    target_include_directories(Stone_snapshot PRIVATE stone/Source)
+    target_link_libraries(Stone_snapshot PRIVATE Stone juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics)
+    target_compile_definitions(Stone_snapshot PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        $<TARGET_PROPERTY:Stone,INTERFACE_COMPILE_DEFINITIONS>)
+    add_executable(Garden_snapshot tests/garden_snapshot.cpp)
+    target_include_directories(Garden_snapshot PRIVATE garden/Source)
+    target_link_libraries(Garden_snapshot PRIVATE Garden juce::juce_audio_processors juce::juce_dsp juce::juce_gui_basics)
+    target_compile_definitions(Garden_snapshot PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        $<TARGET_PROPERTY:Garden,INTERFACE_COMPILE_DEFINITIONS>)
     add_executable(preset_test tests/preset_test.cpp)
     target_include_directories(preset_test PRIVATE Source)
     target_link_libraries(preset_test PRIVATE Artempidor juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics)

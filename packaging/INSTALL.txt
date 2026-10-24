@@ -1,9 +1,11 @@
-ARTEMPIDOR + INTERFERENCE — installation / установка
-====================================================
+ARTEMPIDOR SUITE — installation / установка
+===========================================
 
-This archive has two plugins / в архиве два плагина:
+This archive has four plugins / в архиве четыре плагина:
   artempidor    — granular instrument / гранулятор (MIDI track)
-  Interference  — harmonic sweetener effect / эффект: подтягивает звук в тональность
+  Interference  — harmonic sweetener + auto-tune / эффект: тональность + автотюн
+  STONE         — organic percussion / органическая перкуссия (MIDI track)
+  GARDEN        — grow-a-plant synth / синт-растение (MIDI track)
 
 macOS
   Easiest: double-click "install-mac.command".
@@ -16,15 +18,15 @@ macOS
     *.vst3      -> ~/Library/Audio/Plug-Ins/VST3/
     *.component -> ~/Library/Audio/Plug-Ins/Components/
     then in Terminal / затем в Терминале:
-    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/artempidor.vst3 ~/Library/Audio/Plug-Ins/VST3/Interference.vst3 ~/Library/Audio/Plug-Ins/Components/artempidor.component ~/Library/Audio/Plug-Ins/Components/Interference.component
+    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/*.vst3 ~/Library/Audio/Plug-Ins/Components/*.component
 
 WINDOWS
-  Copy "artempidor.vst3" and "Interference.vst3" to  C:\Program Files\Common Files\VST3\
+  Copy all four .vst3 to  C:\Program Files\Common Files\VST3\
   and rescan plugins in your DAW.
-  Скопируйте оба .vst3 в эту папку и пересканируйте плагины.
+  Скопируйте все четыре .vst3 в эту папку и пересканируйте плагины.
 
 LINUX
-  Copy both .vst3 to ~/.vst3/
+  Copy all .vst3 to ~/.vst3/
 
 HOW TO USE / КАК ПОЛЬЗОВАТЬСЯ
   artempidor is an instrument: put it on a MIDI track.
@@ -59,3 +61,19 @@ INTERFERENCE (effect / эффект)
   крутите COLOR. HQ точнее и включает SNAP. MIDI KEY — тональность по аккорду.
   Кнопки питания у SOUND и TUNE: можно использовать любую часть отдельно.
   TUNE — автотюн для вокала: SPEED 0 = жёсткий робот, 40-100 мс = естественно.
+
+STONE (instrument / инструмент)
+  Pick a MATERIAL (stone, glass, wood, metal, ceramic, skin, water, crystal)
+  and how it is struck. TRAIL turns one note into a chain of hits
+  (HITS, RATE, ACCEL, JITTER...). HOLD ROLL keeps rolling while the key is held.
+  MOVEMENT: 4 modulators (random / LFO / trail / steps / velocity) on any target.
+  Выберите материал и чем по нему бить. TRAIL — цепочка ударов от одной ноты.
+  HOLD ROLL — дробь, пока держите клавишу. MOVEMENT — модуляторы.
+
+GARDEN (instrument / инструмент)
+  Grow a plant, then play its sound. GROW = new plant (new seed).
+  SHAPE: growth, branch, bend, leaves, roots, sun, width = the timbre.
+  CLIMATE: water (breath), wind (movement, also mod wheel), season,
+  bloom (attack), wither (release). TOUCH adds an organic knock.
+  Вырастите растение и играйте его звуком. GROW — новое растение.
+  SHAPE — тембр, CLIMATE — дыхание, движение, как нота раскрывается и вянет.

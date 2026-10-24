@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installs artempidor (VST3 + AU) for the current user.
+# Installs the artempidor suite (VST3 + AU) for the current user.
 # Double-click this file. If macOS refuses: right-click -> Open -> Open.
 cd "$(dirname "$0")" || exit 1
 
